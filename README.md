@@ -91,7 +91,7 @@ Implements (and trains) a Recurrent Neural Network that can process representati
     ```
     example: `python tools/run_all.py -a augment -s /home/user/data/frame/rgb -o /home/user/data/frame/rgb_aug`    
 
-3. Extract the video **object** and **frame** embeddings using [Detic](https://arxiv.org/abs/2201.02605):
+3. Extract the video **object** and **frame** embeddings using [Yolo](https://github.com/ultralytics/ultralytics) and [CLIP](http://proceedings.mlr.press/v139/radford21a):
 
 
       3.1 Install the following dependences
@@ -188,7 +188,7 @@ Implements (and trains) a Recurrent Neural Network that can process representati
     ```
     example: `bash scripts/augment.sh "/vast/iranroman/BBN/M5_X-Stat/rgb_frames /vast/iranroman/BBN/M5_X-Stat/aug_rgb_frames"`    
 
-3. Extract the video **object** and **frame** embeddings using [Detic](https://arxiv.org/abs/2201.02605):
+3. Extract the video **object** and **frame** embeddings using [Yolo](https://github.com/ultralytics/ultralytics) and [CLIP](http://proceedings.mlr.press/v139/radford21a):
 
       3.1. Execute the script
       ```
