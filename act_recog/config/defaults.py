@@ -5,36 +5,21 @@
 from fvcore.common.config import CfgNode
 
 _C = CfgNode()
-
-# -----------------------------------------------------------------------------
-# TRAIN options
-# -----------------------------------------------------------------------------
-_C.TRAIN = CfgNode()
-_C.TRAIN.ENABLE = True
-_C.TRAIN.NUM_GPUS = 1
-_C.TRAIN.BATCH_SIZE = 32
-_C.TRAIN.LR = 0.001
-_C.TRAIN.EPOCHS = 5
-
-# -----------------------------------------------------------------------------
-# EVAL options
-# -----------------------------------------------------------------------------
-_C.EVAL = CfgNode()
-_C.EVAL.ENABLE = True
+_C.NUM_GPUS = 1
+_C.BATCH_SIZE = 32
 
 # -----------------------------------------------------------------------------
 # Model options
 # -----------------------------------------------------------------------------
 _C.MODEL = CfgNode()
-_C.MODEL.HIDDEN_SIZE = 1024
-_C.MODEL.CONTEXT_LENGTH = 'all'
-_C.MODEL.OUTPUT_DIM = 33
-_C.MODEL.DRIVE_ID = ""
-_C.MODEL.SKILLS = []
-_C.MODEL.USE_AUDIO = False
-_C.MODEL.USE_OBJECTS = False
-_C.MODEL.USE_BN = False
-_C.MODEL.CHECKPOINT_FILE_PATH = ''
+_C.MODEL.ARCH = "slowfast"
+_C.MODEL.MODEL_NAME = "SlowFast"
+_C.MODEL.WIN_LENGTH = 1
+_C.MODEL.HOP_SIZE = 0.5
+_C.MODEL.NFRAMES = 32
+_C.MODEL.IN_SIZE = 224
+_C.MODEL.MEAN = []
+_C.MODEL.STD = []
 
 # -----------------------------------------------------------------------------
 # Dataset options
@@ -42,16 +27,7 @@ _C.MODEL.CHECKPOINT_FILE_PATH = ''
 _C.DATASET = CfgNode()
 _C.DATASET.NAME = ''
 _C.DATASET.LOCATION = ''
-_C.DATASET.AUDIO_LOCATION = ''
-_C.DATASET.VIDEO_LAYER = ''
-_C.DATASET.OBJECT_FRAME_LOCATION = ''
-_C.DATASET.TR_ANNOTATIONS_FILE = ''
-_C.DATASET.VL_ANNOTATIONS_FILE = ''
-_C.DATASET.TS_ANNOTATIONS_FILE = ''
-_C.DATASET.HOP_SIZE = 0.5
 _C.DATASET.FPS = 30
-_C.DATASET.INCLUDE_IMAGE_AUGMENTATIONS = False
-_C.DATASET.INCLUDE_TIME_AUGMENTATIONS = False
 
 # -----------------------------------------------------------------------------
 # Dataloader options
@@ -65,7 +41,6 @@ _C.DATALOADER.PIN_MEMORY = True
 # -----------------------------------------------------------------------------
 _C.OUTPUT = CfgNode()
 _C.OUTPUT.LOCATION = ''
-
 
 def get_cfg():
     """

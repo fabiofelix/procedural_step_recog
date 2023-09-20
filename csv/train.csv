@@ -1,0 +1,11 @@
+narration_id,video_id,start_frame,stop_frame,narration,verb,verb_class,noun,noun_class
+M5-1_0,M5-1,290,373,Open inner packaging and remove applicator.,1,1,1,1
+M5-1_1,M5-1,379,507,Insert applicator into wound track as close to bleeding source as possible.,3,3,3,3
+M5-1_2,M5-1,528,555,Insert plunger into applicator.,4,4,4,4
+M5-1_3,M5-1,587,766,Push plunger firmly to deploy sponges into wound.,2,2,2,2
+M5-1_4,M5-1,797,970,Apply manual pressure if necessary.,0,0,0,0
+M5-2_0,M5-2,290,373,Open inner packaging and remove applicator.,1,1,1,1
+M5-2_1,M5-2,379,507,Insert applicator into wound track as close to bleeding source as possible.,3,3,3,3
+M5-2_2,M5-2,528,555,Insert plunger into applicator.,4,4,4,4
+M5-2_3,M5-2,587,766,Push plunger firmly to deploy sponges into wound.,2,2,2,2
+M5-2_4,M5-2,797,970,Apply manual pressure if necessary.,0,0,0,0

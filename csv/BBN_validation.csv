@@ -1,0 +1,36 @@
+narration_id,video_id,start_frame,stop_frame,narration,verb,verb_class,noun,noun_class
+M5-19_0,M5-19,363,546,Apply manual pressure if necessary.,0,0,0,0
+M5-19_1,M5-19,451,488,Insert plunger into applicator.,4,4,4,4
+M5-19_2,M5-19,543,611,Insert applicator into wound track as close to bleeding source as possible.,3,3,3,3
+M5-19_3,M5-19,633,776,Push plunger firmly to deploy sponges into wound.,2,2,2,2
+M5-19_4,M5-19,803,880,Apply manual pressure if necessary.,0,0,0,0
+M5-3_0,M5-3,210,255,Open inner packaging and remove applicator.,1,1,1,1
+M5-3_1,M5-3,276,354,Insert applicator into wound track as close to bleeding source as possible.,3,3,3,3
+M5-3_2,M5-3,375,408,Insert plunger into applicator.,4,4,4,4
+M5-3_3,M5-3,416,553,Push plunger firmly to deploy sponges into wound.,2,2,2,2
+M5-3_4,M5-3,575,622,Open inner packaging and remove applicator.,1,1,1,1
+M5-3_5,M5-3,622,703,Insert applicator into wound track as close to bleeding source as possible.,3,3,3,3
+M5-3_6,M5-3,713,748,Insert plunger into applicator.,4,4,4,4
+M5-3_7,M5-3,755,884,Push plunger firmly to deploy sponges into wound.,2,2,2,2
+M5-3_8,M5-3,1045,1149,Apply manual pressure if necessary.,0,0,0,0
+M5-32_0,M5-32,220,563,Apply manual pressure if necessary.,0,0,0,0
+M5-32_1,M5-32,343,439,Open inner packaging and remove applicator.,1,1,1,1
+M5-32_2,M5-32,471,592,Insert applicator into wound track as close to bleeding source as possible.,3,3,3,3
+M5-32_3,M5-32,616,658,Insert plunger into applicator.,4,4,4,4
+M5-32_4,M5-32,699,859,Push plunger firmly to deploy sponges into wound.,2,2,2,2
+M5-32_5,M5-32,884,1112,Apply manual pressure if necessary.,0,0,0,0
+M5-34_0,M5-34,284,965,Apply manual pressure if necessary.,0,0,0,0
+M5-34_1,M5-34,376,844,Open inner packaging and remove applicator.,1,1,1,1
+M5-34_2,M5-34,867,1011,Insert applicator into wound track as close to bleeding source as possible.,3,3,3,3
+M5-34_3,M5-34,1033,1066,Insert plunger into applicator.,4,4,4,4
+M5-34_4,M5-34,1079,1204,Push plunger firmly to deploy sponges into wound.,2,2,2,2
+M5-34_5,M5-34,1244,1431,Apply manual pressure if necessary.,0,0,0,0
+M5-6_0,M5-6,271,293,Insert applicator into wound track as close to bleeding source as possible.,3,3,3,3
+M5-6_1,M5-6,322,354,Insert plunger into applicator.,4,4,4,4
+M5-6_2,M5-6,363,464,Push plunger firmly to deploy sponges into wound.,2,2,2,2
+M5-6_3,M5-6,492,588,Apply manual pressure if necessary.,0,0,0,0
+M5-9_0,M5-9,419,462,Open inner packaging and remove applicator.,1,1,1,1
+M5-9_1,M5-9,519,605,Insert plunger into applicator.,4,4,4,4
+M5-9_2,M5-9,627,683,Insert applicator into wound track as close to bleeding source as possible.,3,3,3,3
+M5-9_3,M5-9,717,904,Push plunger firmly to deploy sponges into wound.,2,2,2,2
+M5-9_4,M5-9,947,1072,Apply manual pressure if necessary.,0,0,0,0

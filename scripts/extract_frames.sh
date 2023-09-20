@@ -1,3 +1,5 @@
+#!/bin/bash
+
 path=$1
 output_path=$2
 echo $output_path
