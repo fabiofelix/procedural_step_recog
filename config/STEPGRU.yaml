@@ -14,11 +14,11 @@ MODEL:
 #  SKILLS: ['m5']
 #  DRIVE_ID: 1SWl9ZZtX1xO6oSNFx5NueEbSP5K6IifE
 ##    
-  USE_AUDIO: true
-  USE_OBJECTS: true
-  USE_BN: false
-#  CHECKPOINT_FILE_PATH: "/scratch/ffd2011/procedural_step_recog/models/bbn_yolo_M5.pt"
-  CHECKPOINT_FILE_PATH: "/scratch/ffd2011/data/BBN/tmp2/feature/omnimix/train/step_gru_best_model.pt"
+  USE_AUDIO: false    ##default false
+  USE_OBJECTS: true   ##default true
+  USE_BN: false       ##default false
+  CHECKPOINT_FILE_PATH: "/scratch/ffd2011/procedural_step_recog/models/STEPGRU_tourniquet.pt"
+#  CHECKPOINT_FILE_PATH: "/scratch/ffd2011/data/BBN/tmp2/feature/omnimix/train/step_gru_best_model.pt"
 DATASET:
   NAME: 'Milly'
   LOCATION: '/scratch/ffd2011/data/BBN/tmp/feature/omnivore'

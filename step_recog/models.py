@@ -1,15 +1,21 @@
+#=========================================================================#
+#Code from https://github.com/VIDA-NYU/ptg-server-ml/tree/main/ptgprocess #
+#=========================================================================#
+
 import os
 import sys
 import glob
 import numpy as np
 import torch
+import math
 from torch import nn
 
 import gdown
 import yaml
 from collections import OrderedDict
 
-mod_path = os.path.join(os.path.dirname(__file__), 'procedural_step_recog')
+##mod_path = os.path.join(os.path.dirname(__file__), 'procedural_step_recog')
+mod_path = os.path.join(os.path.dirname(__file__), '..')
 sys.path.insert(0,  mod_path)
 
 from step_recog.config.defaults import get_cfg
@@ -36,8 +42,9 @@ CHECKPOINTS = {
 CFG_FILES = glob.glob(os.path.join(mod_path, 'config/*.yaml'))
 for f in CFG_FILES:
     cfg = yaml.safe_load(open(f))
-    for skill in cfg['MODEL']['SKILLS']:
-        CHECKPOINTS[skill] = (cfg['MODEL']['DRIVE_ID'], f)
+    if 'SKILLS' in cfg['MODEL']:
+      for skill in cfg['MODEL']['SKILLS']:
+          CHECKPOINTS[skill] = (cfg['MODEL']['DRIVE_ID'], f)
 print(CHECKPOINTS)
 
 # class Omnimix(nn.Module):
@@ -99,10 +106,11 @@ class OmniGRU(nn.Module):
         super().__init__()
         # self.cfg = cfg = get_cfg()
         
-        # drive_id, cfg_file =  CHECKPOINTS[model_name]
-        # checkpoint = os.path.join(MODEL_DIR, f'{os.path.basename(cfg_file)}.pt')
-        # if not os.path.isfile(checkpoint):
-        #     gdown.download(id=drive_id, output=checkpoint)
+        drive_id, cfg_file =  CHECKPOINTS[cfg.MODEL.SKILLS[0]]
+        checkpoint = os.path.basename(cfg_file).split('.')[0]
+        checkpoint = os.path.join(MODEL_DIR, f'{checkpoint}.pt')
+        if not os.path.isfile(checkpoint):
+            gdown.download(id=drive_id, output=checkpoint)
 
         # cfg.merge_from_file(cfg_file)
         n_layers = 2
@@ -165,7 +173,10 @@ class OmniGRU(nn.Module):
             obj_in = torch.sum(obj_proj * values, dim=-2)
             obj_in = self.relu(self.obj_fc(obj_in))
             
-            x = torch.concat((action, obj_in), -1)
+            if self.use_audio:
+              x = torch.concat((action, aud, obj_in), -1)
+            else:    
+              x = torch.concat((action, obj_in), -1)
 
         out, h = self.gru(x, h)
         # print(1, out.shape, flush=True)
