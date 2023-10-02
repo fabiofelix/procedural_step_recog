@@ -64,6 +64,9 @@ def extract_img_embedding(args):
   dir_list = glob.glob(os.path.join(args.source_path, "*"))
   dir_list.sort()
 
+  if len(dir_list) > 0 and not "_aug" in os.path.basename(dir_list[0]):
+    dir_list = [args.source_path]
+
   for subdir in dir_list:
     dir_name = os.path.basename(subdir)
     logging.info("|--- " + dir_name)
