@@ -42,6 +42,8 @@ Implements (and trains) a Recurrent Neural Network that can process representati
 
     1.3 You should convert it to CSV file and disconsider the fields list and timestamp
 
+    1.4 If necessary, split your dataset into train/validation/test.
+
 2. (optional) Finally, the video sound clips should be a HDF5 file.
 
     2.1 You can execute the extractor on [Auditory Slow-Fast](https://github.com/ekazakos/auditory-slow-fast).
@@ -105,7 +107,7 @@ Implements (and trains) a Recurrent Neural Network that can process representati
 
       3.3. Execute the script
       ```
-      python tools/run_all.py -a img -s /path/to/rgb_frames -o /path/to/object/frames --skill skill_tag
+      python tools/run_all.py -a img -s /path/to/rgb_frames -o /path/to/object/features --skill skill_tag
       ```   
       example: `python tools/run_all.py -a img -s /home/user/data/frame/rgb_aug -o /home/user/data/features/obj_frame --skill M5`
 

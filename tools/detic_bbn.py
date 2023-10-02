@@ -106,6 +106,7 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 class Extractor:
     ROOT = '/vast/{user}/BBN'
+    RGB_FRAMES_ROOT = '{video_id}/frame_{frame_id}.{ext}'
     RGB_FRAMES = '{out_format}/{video_id}/frame_{frame_id}.{ext}'
     AUG_FRAMES = '{out_format}/{video_id}_aug{aug_id}/frame_{frame_id}.{ext}'
     def __init__(self, **kw):
@@ -127,10 +128,11 @@ class Extractor:
 
         tqdm.tqdm.write(f'{frame_dir}...')
         print(self, frame_dir, out_root)
-        rel_pattern = pt.Path(self.AUG_FRAMES if 'aug' in frame_dir else self.RGB_FRAMES)
 
         _root = pt.Path(frame_dir).parent.parent
+        rel_pattern = pt.Path(self.AUG_FRAMES if 'aug' in frame_dir else self.RGB_FRAMES_ROOT  if _root == "/" else self.RGB_FRAMES)
         pattern = _root / rel_pattern
+        rel_pattern = pt.Path(self.AUG_FRAMES if 'aug' in frame_dir else self.RGB_FRAMES)
         out_pattern = pt.Path(out_root or _root) / rel_pattern
         print(pattern, out_pattern)
 
