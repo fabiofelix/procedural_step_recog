@@ -69,7 +69,7 @@ class Milly_multifeature(torch.utils.data.Dataset):
                 }
             ipoint += 1
 
-    def __getitem__(self, index, time_augs = [15,7.5,3.75], win_sizes = [4,2,1]):
+    def __getitem__(self, index, time_augs = [15,7.5,3.75], win_sizes = [2,4,1]):
         if self.image_augs:
             iaug = self.rng.choice(range(-1,20),replace=False) # 20 possible augmentations
         else:
@@ -82,7 +82,7 @@ class Milly_multifeature(torch.utils.data.Dataset):
         frames = [120]
         labels = [5]
         labels_t = [[0,0]]
-        wins = [4]
+        wins = [2]
         insert_other = 0
         flip_other = 0
         for istep, step in enumerate(drecord['steps_frames']):
@@ -170,9 +170,10 @@ class Milly_multifeature(torch.utils.data.Dataset):
 
         for o,b,f,f_idx in zip(omni_paths,obj_paths,frame_paths,frames):
             omni_embeddings.append(np.load(o))
-            obj_features = np.load(b)['features']
-            obj_boxes = np.load(b)['boxes']
-            obj_conf = np.load(b)['confs']
+            obj = np.load(b)
+            obj_features = obj['features']
+            obj_boxes = obj['boxes']
+            obj_conf = obj['confs']
             if len(obj_features) > 0:
               obj_features = obj_features
               obj_boxes = obj_boxes

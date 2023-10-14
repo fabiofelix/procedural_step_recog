@@ -20,7 +20,11 @@ def retry_load_images(image_paths, retry=10, backend="pytorch", flow=False):
                 imgs (list): list of loaded images.
     """
     for i in range(retry):
-        imgs = [cv2.resize(cv2.imread(image_path),(456,256)) for image_path in image_paths]
+        imgs = []
+
+        for image_path in image_paths:
+          if os.path.isfile(image_path):   
+            imgs.append( cv2.resize(cv2.imread(image_path), (456, 256)) )
 
         if all(img is not None for img in imgs):
             if backend == "pytorch":

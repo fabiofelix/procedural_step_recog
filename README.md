@@ -3,7 +3,7 @@
 
 Implements (and trains) a Recurrent Neural Network that can process representations of human actions to infer the current step in a procedure (i.e. step in a recipe or in a medical procedure).
 
-`Note: Run all the following commands inside the main dir of the code.`
+`Note: Do not forget to install this repository`
 
 ## **Dataset**
 
@@ -107,9 +107,9 @@ Implements (and trains) a Recurrent Neural Network that can process representati
 
       3.3. Execute the script
       ```
-      python tools/run_all.py -a img -s /path/to/rgb_frames -o /path/to/object/features --skill skill_tag
+      python tools/run_all.py -a img -s /path/to/rgb_frames/video -o /path/to/object/features --skill skill_tag
       ```   
-      example: `python tools/run_all.py -a img -s /home/user/data/frame/rgb_aug -o /home/user/data/features/obj_frame --skill M5`
+      example: `python tools/run_all.py -a img -s /home/user/data/frame/rgb_aug/VIDEO-1 -o /home/user/data/features/obj_frame --skill M5`
 
 4. (optional) Extract the **sound** embeddings using Auditory Slow-Fast:
 
