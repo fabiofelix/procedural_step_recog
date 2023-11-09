@@ -109,7 +109,7 @@ Implements (and trains) a Recurrent Neural Network that can process representati
       ```
       python tools/run_all.py -a img -s /path/to/rgb_frames/video -o /path/to/object/features --skill skill_tag
       ```   
-      example: `python tools/run_all.py -a img -s /home/user/data/frame/rgb_aug/VIDEO-1 -o /home/user/data/features/obj_frame --skill M5`
+      example: `python tools/run_all.py -a img -s /home/user/data/frame/rgb_aug/VIDEO-1 -o /home/user/data/features/obj_frame --skill M1`
 
 4. (optional) Extract the **sound** embeddings using Auditory Slow-Fast:
 
@@ -132,7 +132,7 @@ Implements (and trains) a Recurrent Neural Network that can process representati
     ```   
     example: `python tools/run_all.py -a sound --cfg auditory-slow-fast/configs/BBN/SLOWFAST_R50.yaml`
 
-    4.5 Aditionally, the last code generates one pickle file with all the features but our approach demands a sequence of numpy files per frame. Therefore, ran the next code to split the big file in small portions.
+    4.5 Aditionally, the last code generates one pickle file with all the features but our approach demands a sequence of numpy files per frame. Therefore, run the next code to split the big file in small portions.
 
     ```
     python tools/run_all.py -a split -s /path/to/one/pickle/feature/file -o /path/to/output/numpy/many/files -l /path/to/pickle/annotations/file 
@@ -173,6 +173,11 @@ Implements (and trains) a Recurrent Neural Network that can process representati
 
 ## **Running things on the [NYU HPC](https://sites.google.com/nyu.edu/nyu-hpc)**    
 
+HPC has restrictions about number and size of files.
+Therefore, we are using [squash](https://sites.google.com/nyu.edu/nyu-hpc/hpc-systems/hpc-storage/data-management/squash-file-system-and-singularity) files to deal with the number of generated files.
+The scripts in the steps 1, 2, 3, and 5 process the inputs and [squash](https://sites.google.com/nyu.edu/nyu-hpc/hpc-systems/hpc-storage/data-management/squash-file-system-and-singularity) the outputs, creating one compressed file per video. 
+
+
 1. Extract the video **frames**
 
     1.1 Execute the script
@@ -180,7 +185,9 @@ Implements (and trains) a Recurrent Neural Network that can process representati
     ```
     bash scripts/extract_frames.sh "/path/to/videos/" "/path/to/output/rgb_frames"
     ```
-    example: `bash scripts/extract_frames.sh "/Users/iranroman/datasets/M2_Tourniquet/Data" "Users/iranroman/datasets/BBN_0p52/M2_Tourniquet/rgb_frames"`
+    example: `bash scripts/extract_frames.sh /home/user/data/video /home/user/data/frame/rgb`
+
+    `Note: You have to run this script twice. One to extract the frames (setting extract="true" inside the script) and the second to squash the files (setting extract="false" inside the script). In the first time, run inside a singularity that has ffmpeg installed. In the second one, do not use a singularity. squash commands are not visuble in a singularity environment (we do not know why).`
 
 2. **Augment** video frames
 
@@ -188,50 +195,57 @@ Implements (and trains) a Recurrent Neural Network that can process representati
     ```
     bash scripts/augment.sh "/path/to/rgb_frames" "/path/to/output/aug_rgb_frames"
     ```
-    example: `bash scripts/augment.sh "/vast/iranroman/BBN/M5_X-Stat/rgb_frames /vast/iranroman/BBN/M5_X-Stat/aug_rgb_frames"`    
+    example: `bash scripts/augment.sh /home/user/data/frame/rgb /home/user/data/frame/rgb_aug`    
 
 3. Extract the video **object** and **frame** embeddings using [Yolo](https://github.com/ultralytics/ultralytics) and [CLIP](http://proceedings.mlr.press/v139/radford21a):
 
       3.1. Execute the script
       ```
-      bash scripts/detic_bbn.sh "/path/to/augmented/rgb_frames" "path/to/output/features" skill_tag
+      bash scripts/detic_bbn.sh "/path/to/augmented/rgb_frames" "/path/to/output/features" skill_tag
       ```   
-      example: `bash scripts/detic_bbn.sh "/vast/iranroman/BBN/M2_Lab_Skills/aug_rgb_frames" "/vast/iranroman/BBN-features" M2`
+      example: `bash scripts/detic_bbn.sh /home/user/data/frame/rgb_aug/ /home/user/data/features/obj_frame M1`
 
-4. Extract the video **action** embeddings using [Omnivore](https://arxiv.org/abs/2201.08377):
+4. (optional) Extract the **sound** embeddings using Auditory Slow-Fast:
 
-    4.1. Execute the script
-
-    ```    
-    ```   
-    example: ` `
-
-5. (optional) Extract the **sound** embeddings using Auditory Slow-Fast:
-
-    5.1 Execute the script
+    4.1 Execute the script
 
     ```    
     ```   
     example: ` `
 
-    5.2 Ran the next code to split the big file in small portions.
+    4.2 Run the next code to split the big file in small portions.
 
     ```
     ```   
     example: ` `
 
-6. Train the video **step** recognizer:    
+5. Extract the video **action** embeddings using [Omnivore](https://arxiv.org/abs/2201.08377):
+
+    5.1. Execute the script
+
+    ```
+    bash scripts/omnivore.sh /path/to/row/and/augmented/frame /path/of/out/features /path/to/config/file
+    ```   
+    example: `bash scripts/omnivore.sh /home/user/data/frame/ /home/user/data/features/omnivore/test_subset /home/user/config/OMNIVORE.yaml`
+
+    `Note: The output path of the script is the same specified in the YAML configuration file`
+    
+
+6. Training the video **step** recognizer:    
 
     6.1. Execute the script
 
     ```
+    bash scripts/omnimix.sh /path/to/action/features/ /path/to/object/and/frame/features /home/user/data/features/sound/ /path/to/config/file
     ```   
-    example: ` `
+    example: `bash scripts/omnimix.sh /home/user/data/features/omnivore/ /home/user/data/features/obj_frame /home/user/data/features/sound/ /home/user/config/STEPGRU.yaml`
+    
 
-7. Recognize the **steps**    
+7. Recognizing the **steps**    
 
-    7.2. Execute the script
-
+    7.1. Execute the previsous step but disable training in the configuration file.
     ```
-    ```   
-    example: ` `     
+    TRAIN
+      ENABLE: False
+    ```      
+     
