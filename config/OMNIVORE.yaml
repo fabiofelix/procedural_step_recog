@@ -8,11 +8,11 @@ MODEL:
   STD: [0.229, 0.224, 0.225]
 DATASET:
   NAME: 'Milly'
-  LOCATION: '/scratch/ffd2011/data/BBN/tmp/frame/rgb_aug'
+  LOCATION: '/frame'
   FPS: 30
 DATALOADER:
-  NUM_WORKERS: 12
+  NUM_WORKERS: 8
   PIN_MEMORY: True
 OUTPUT:
-  LOCATION: '/scratch/ffd2011/data/BBN/tmp/feature/omnivore'
+  LOCATION: '/homse/user/data/BBN/new/M1/feature/omnivore/test'
 BATCH_SIZE: 1

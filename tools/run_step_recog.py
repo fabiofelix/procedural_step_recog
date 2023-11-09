@@ -5,7 +5,7 @@ import os
 from torch.utils.data import DataLoader
 from step_recog.config.defaults import get_cfg
 from step_recog import train, evaluate, build_model
-from step_recog.datasets import Milly_multifeature
+from step_recog.datasets import Milly_multifeature_v3
 
 def parse_args():
     """
@@ -85,15 +85,18 @@ def collate_fn(data):
 
     for i in range(len(data)):
         omni_empty = torch.zeros((max_length,nomni_feats))
-        omni_empty[:omni[i].shape[0],:] = omni[i]
+        if omni[i].shape[0] > 0:
+          omni_empty[:omni[i].shape[0],:] = omni[i]
         omni_new.append(omni_empty)
 
         objs_empty = torch.zeros((max_length,25,nobj_feats))
-        objs_empty[:objs[i].shape[0],...] = objs[i]
+        if objs[i].shape[0] > 0:
+          objs_empty[:objs[i].shape[0],...] = objs[i]
         objs_new.append(objs_empty)
 
         frame_empty = torch.zeros((max_length,1,nframe_feats))
-        frame_empty[:frame[i].shape[0],:] = frame[i]
+        if frame[i].shape[0] > 0:
+          frame_empty[:frame[i].shape[0],:] = frame[i]
         frame_new.append(frame_empty)
 
         audio_empty = torch.zeros((max_length,naudio_feats))
@@ -102,20 +105,24 @@ def collate_fn(data):
         audio_new.append(audio_empty)        
 
         labels_empty = torch.zeros((max_length))
-        labels_empty[:labels[i].shape[0]] = labels[i]
+        if labels[i].shape[0] > 0:
+          labels_empty[:labels[i].shape[0]] = labels[i]
         labels_new.append(labels_empty)
 
         labels_t_empty = torch.zeros((max_length,2))
-        labels_t_empty[:labels_t[i].shape[0]] = labels_t[i]
+        if labels_t[i].shape[0] > 0:
+          labels_t_empty[:labels_t[i].shape[0]] = labels_t[i]
         labels_t_new.append(labels_t_empty)
 
         mask_empty = torch.zeros((max_length,1))
-        mask_empty[:labels[i].shape[0]] = 1
+        if labels[i].shape[0] > 0:
+          mask_empty[:labels[i].shape[0]] = 1
         mask_new.append(mask_empty)
 
         frame_idx_empty = torch.zeros((max_length))
-        frame_idx_empty[:labels[i].shape[0]] = frame_idx[i]
-        frame_idx_new.extend(frame_idx_empty)        
+        if frame_idx[i].shape[0] > 0:
+          frame_idx_empty[:frame_idx[i].shape[0]] = frame_idx[i]
+        frame_idx_new.append(frame_idx_empty)        
 
     omni_new = torch.stack(omni_new)
     objs_new = torch.stack(objs_new)
@@ -128,7 +135,6 @@ def collate_fn(data):
 
     return omni_new.float(), objs_new.float(), frame_new.float(), audio_new.long(), labels_new.long(), labels_t_new.float(), mask_new.long(), frame_idx_new.long(), ids
 
-
 def main():
     """
     Main function to spawn the process.
@@ -139,36 +145,40 @@ def main():
     # build the dataset
  
     model = None  
+    timeout = 0
     
     if cfg.TRAIN.ENABLE:
-      tr_dataset = Milly_multifeature(cfg, split='train')
-      vl_dataset = Milly_multifeature(cfg, split='validation')
+      tr_dataset = Milly_multifeature_v3(cfg, split='train')
+      vl_dataset = Milly_multifeature_v3(cfg, split='validation')
       tr_data_loader = DataLoader(
               tr_dataset, 
               shuffle=True, 
               batch_size=cfg.TRAIN.BATCH_SIZE,
               num_workers=cfg.DATALOADER.NUM_WORKERS,
               collate_fn=collate_fn,
-              drop_last=True)
+              drop_last=True,
+              timeout=timeout)
       vl_data_loader = DataLoader(
               vl_dataset, 
               shuffle=False, 
               batch_size=cfg.TRAIN.BATCH_SIZE,
               num_workers=cfg.DATALOADER.NUM_WORKERS,
               collate_fn=collate_fn,
-              drop_last=False)
+              drop_last=False,
+              timeout=timeout)
       model = train(tr_data_loader, 
               vl_data_loader,
               cfg)
     if cfg.EVAL.ENABLE:
-      ts_dataset = Milly_multifeature(cfg, split='test')
+      ts_dataset = Milly_multifeature_v3(cfg, split='test')
       ts_data_loader = DataLoader(
               ts_dataset, 
               shuffle=False, 
               batch_size=cfg.TRAIN.BATCH_SIZE,
               num_workers=cfg.DATALOADER.NUM_WORKERS,
               collate_fn=collate_fn,
-              drop_last=False)           
+              drop_last=False,
+              timeout=timeout)           
 
       print('loading best model')
 

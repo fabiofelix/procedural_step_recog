@@ -1,1 +1,1 @@
-from .milly import Milly_multifeature
+from .milly import Milly_multifeature_v3

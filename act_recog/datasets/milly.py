@@ -80,7 +80,7 @@ class Milly(torch.utils.data.Dataset):
             nframes = len(os.listdir(os.path.join(self.data_dir,v)))
             start_frame = 1
             stop_frame = self.dataset_fps * self.model_length
-            while stop_frame < nframes:
+            while stop_frame <= nframes:
                 self._video_records[irecord] = {
                         'vid_id':v,
                         'start_frame': start_frame,   

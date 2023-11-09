@@ -24,6 +24,7 @@ def slide(cfg):
 
     out_tmpl = "frame_{:010d}"
 
+
     for cur_iter, (inputs, vid_id, stop_frame) in tqdm.tqdm(enumerate(slide_loader)):
 
         # move data to GPU
