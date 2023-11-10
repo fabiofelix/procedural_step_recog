@@ -84,42 +84,41 @@ def collate_fn(data):
     frame_idx_new = []
 
     for i in range(len(data)):
-        if True:
-          omni_empty = torch.zeros((max_length,nomni_feats))
-          if nomni_feats > 0:
-            omni_empty[:omni[i].shape[0],:] = omni[i]
-          omni_new.append(omni_empty)
+      omni_empty = torch.zeros((max_length,nomni_feats))
+      if nomni_feats > 0:
+        omni_empty[:omni[i].shape[0],:] = omni[i]
+      omni_new.append(omni_empty)
 
-          objs_empty = torch.zeros((max_length,25,nobj_feats))
-          if nobj_feats > 0:
-            objs_empty[:objs[i].shape[0],...] = objs[i]
-          objs_new.append(objs_empty)
+      objs_empty = torch.zeros((max_length,25,nobj_feats))
+      if nobj_feats > 0:
+        objs_empty[:objs[i].shape[0],...] = objs[i]
+      objs_new.append(objs_empty)
 
-          frame_empty = torch.zeros((max_length,1,nframe_feats))
-          if nframe_feats > 0:
-            frame_empty[:frame[i].shape[0],:] = frame[i]
-          frame_new.append(frame_empty)
+      frame_empty = torch.zeros((max_length,1,nframe_feats))
+      if nframe_feats > 0:
+        frame_empty[:frame[i].shape[0],:] = frame[i]
+      frame_new.append(frame_empty)
 
-          audio_empty = torch.zeros((max_length,naudio_feats))
-          if naudio_feats > 0:
-            audio_empty[:audio[i].shape[0],:] = audio[i]
-          audio_new.append(audio_empty)        
+      audio_empty = torch.zeros((max_length,naudio_feats))
+      if naudio_feats > 0:
+        audio_empty[:audio[i].shape[0],:] = audio[i]
+      audio_new.append(audio_empty)        
 
-          labels_empty = torch.zeros((max_length))
-          labels_empty[:labels[i].shape[0]] = labels[i]
-          labels_new.append(labels_empty)
+      labels_empty = torch.zeros((max_length))
+      labels_empty[:labels[i].shape[0]] = labels[i]
+      labels_new.append(labels_empty)
 
-          labels_t_empty = torch.zeros((max_length,2))
-          labels_t_empty[:labels_t[i].shape[0]] = labels_t[i][...,-2:]
-          labels_t_new.append(labels_t_empty)
+      labels_t_empty = torch.zeros((max_length,2))
+      labels_t_empty[:labels_t[i].shape[0]] = labels_t[i][...,-2:]
+      labels_t_new.append(labels_t_empty)
 
-          mask_empty = torch.zeros((max_length,1))
-          mask_empty[:labels[i].shape[0]] = 1
-          mask_new.append(mask_empty)
+      mask_empty = torch.zeros((max_length,1))
+      mask_empty[:labels[i].shape[0]] = 1
+      mask_new.append(mask_empty)
 
-          frame_idx_empty = torch.zeros((max_length))
-          frame_idx_empty[:frame_idx[i].shape[0]] = frame_idx[i]
-          frame_idx_new.append(frame_idx_empty)        
+      frame_idx_empty = torch.zeros((max_length))
+      frame_idx_empty[:frame_idx[i].shape[0]] = frame_idx[i]
+      frame_idx_new.append(frame_idx_empty)        
 
     omni_new = torch.stack(omni_new)
     objs_new = torch.stack(objs_new)
