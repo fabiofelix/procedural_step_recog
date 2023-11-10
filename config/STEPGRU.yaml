@@ -23,6 +23,7 @@ MODEL:
   USE_BN: false       ##default false
   #  CHECKPOINT_FILE_PATH: "/home/user/procedural_step_recog/models/STEPGRU_tourniquet.pt"
   #  CHECKPOINT_FILE_PATH: "/home/user/data/BBN/new/M1/feature/omnimix/step_gru_best_model.pt"
+  APPEND_OUT_POSITIONS: 3
 DATASET:
   NAME: 'Milly'
   LOCATION: '/omnivore'

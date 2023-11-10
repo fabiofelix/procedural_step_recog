@@ -6,11 +6,8 @@ import pandas as pd
 import copy
 import glob
 import pdb
-import math
 
-DEFAULT_STATE = 5
 DEFAULT_WINDOW_SIZE = 2
-DEFAULT_PADDING_STATE = 2  ##same quantity of units added to the model to represent begin/end states
 
 ##TODO: It's returning the whole video
 class Milly_multifeature(torch.utils.data.Dataset):
@@ -39,6 +36,9 @@ class Milly_multifeature(torch.utils.data.Dataset):
         else:
             self.image_augs = False
             self.time_augs = False
+        aux = [i for i in range(cfg.MODEL.OUTPUT_DIM + cfg.MODEL.APPEND_OUT_POSITIONS)]    
+        self.default_steps = {"real":[i for i in range (cfg.MODEL.OUTPUT_DIM)], "no_step": 0 if cfg.MODEL.APPEND_OUT_POSITIONS == 2 else cfg.MODEL.OUTPUT_DIM, "begin": aux[-2], "end": aux[-1]}    
+        self.append_out_positions = cfg.MODEL.APPEND_OUT_POSITIONS
         self.rng = np.random.default_rng()
         self._construct_loader(split)
 
@@ -88,13 +88,13 @@ class Milly_multifeature(torch.utils.data.Dataset):
         if drecord['steps_frames'][0][0] < frames[0]:
            frames = [60] #TODO: OMNIVORE STARTS HERE
 
-        labels = [DEFAULT_STATE]
-        labels_t = [[0 for i in range(DEFAULT_PADDING_STATE)]]   ##TODO: WHY 0?
+        labels = [self.default_steps["no_step"]]
+        labels_t = [[0 for i in range(self.append_out_positions)]]   ##TODO: WHY 0?
         wins = [DEFAULT_WINDOW_SIZE]
         insert_other = 0
         flip_other = 0
-        for istep, step in enumerate(drecord['steps_frames']):
 
+        for istep, step in enumerate(drecord['steps_frames']):
             step_start = step[0]
             step_end = step[1]
 
@@ -103,8 +103,10 @@ class Milly_multifeature(torch.utils.data.Dataset):
             win_size = win_sizes[taug]
             for frame in np.arange(step_start_aug, step_end_aug, time_augs[taug]): 
                 frames.append(frame)
-                labels.append(DEFAULT_STATE)
-                labels_t.append([0.5 for i in range(DEFAULT_PADDING_STATE)]) ##TODO: WHY 0.5?
+                labels.append(self.default_steps["no_step"])
+                aux = [0.0 for i in range(self.append_out_positions)]
+                aux[-2:] = [0.5, 0.5] ##TODO: WHY 0.5?
+                labels_t.append(aux)
                 wins.append(win_size)
             if istep == 0:
                 other_buffer = copy.copy(frames)
@@ -115,8 +117,10 @@ class Milly_multifeature(torch.utils.data.Dataset):
                     frames.extend([other_buffer[i] for i in np.arange(start_,start_+nsteps)[::-1]])
                 else:
                     frames.extend([other_buffer[i] for i in np.arange(start_,start_+nsteps)])
-                labels.extend([DEFAULT_STATE]*nsteps)
-                labels_t.extend([[0.5 for i in range(DEFAULT_PADDING_STATE)]]*nsteps) ##TODO: WHY 0.5?
+                labels.extend([self.default_steps["no_step"]]*nsteps)
+                aux = [0.0 for i in range(self.append_out_positions)]
+                aux[-2:] = [0.5, 0.5] ##TODO: WHY 0.5?
+                labels_t.append(aux*nsteps)                 
                 wins.extend([DEFAULT_WINDOW_SIZE]*nsteps)
             if self.time_augs:
                 nexttaug = self.rng.choice(3,replace=False) # 4 possible augmentations
@@ -132,8 +136,12 @@ class Milly_multifeature(torch.utils.data.Dataset):
             for iframe,frame in enumerate(nparange):
                 frames.append(frame)
                 labels.append(step[2])
-                labels_t.append([iframe/len(nparange),(len(nparange)-iframe)/len(nparange)])
+
+                aux = [0 for i in range(self.append_out_positions)]
+                aux[-2:] = [iframe/len(nparange),(len(nparange)-iframe)/len(nparange)]
+                labels_t.append(aux)
                 wins.append(win_size)
+
             if self.time_augs:
                 nexttaug = self.rng.choice(3,replace=False) # 4 possible augmentations
             else:
@@ -141,8 +149,13 @@ class Milly_multifeature(torch.utils.data.Dataset):
             taug = nexttaug
             #TODO: FABIO, review this filter code
             frames_aux = frames
+            labels_aux = labels
             frames = [f for f in frames_aux if f >= step_start]
-            labels = [l for f, l in zip(frames_aux, labels) if f >= step_start]
+            labels = []
+
+            for f, _ in zip(frames_aux, labels_aux):
+              if f >= step_start:
+                labels.append( step[2]  if f <= step_end else self.default_steps["no_step"] )  
             labels_t = [l for f, l in zip(frames_aux, labels_t) if f >= step_start]
             wins = [w for f, w in zip(frames_aux, wins) if f >= step_start]
             #TODO:
@@ -274,7 +287,7 @@ class Milly_multifeature_v2(Milly_multifeature):
         taug = 0
         curr_frame = 120
         frames = [120]
-        labels = [DEFAULT_STATE]
+        labels = [self.default_steps["no_step"]]
         labels_t = [[0,0]]
         wins = [2]
         insert_other = 0
@@ -294,7 +307,7 @@ class Milly_multifeature_v2(Milly_multifeature):
             win_size = win_sizes[taug]
             for frame in np.arange(step_start_aug, step_end_aug, time_augs[taug]): 
                 frames.append(frame)
-                labels.append(DEFAULT_STATE)
+                labels.append(self.default_steps["no_step"])
                 labels_t.append([0.5,0.5])
                 wins.append(win_size)
             if istep == 0:
@@ -306,7 +319,7 @@ class Milly_multifeature_v2(Milly_multifeature):
                     frames.extend([other_buffer[i] for i in np.arange(start_,start_+nsteps)[::-1]])
                 else:
                     frames.extend([other_buffer[i] for i in np.arange(start_,start_+nsteps)])
-                labels.extend([DEFAULT_STATE]*nsteps)
+                labels.extend([self.default_steps["no_step"]]*nsteps)
                 labels_t.extend([[0.5,0.5]]*nsteps)
                 wins.extend([2]*nsteps)
             if self.time_augs:
@@ -430,12 +443,11 @@ class Milly_multifeature_v3(Milly_multifeature):
               steps_ = []
 
               for _, step in vid_ann.iterrows():
-                if ( (step.start_frame >= start_frame and step.start_frame <= stop_frame) or
-                     (step.stop_frame >= start_frame and step.stop_frame <= stop_frame) ):
-                  steps_.append(( max(start_frame, step.start_frame), min(stop_frame, step.stop_frame), step.verb_class ))
+                  if stop_frame >= step.start_frame and stop_frame <= step.stop_frame:
+                    steps_.append(( int(start_frame), int(stop_frame), step.verb_class))
 
               if len(steps_) == 0:
-                steps_.append((int(start_frame), int(stop_frame), 0))
+                steps_.append((int(start_frame), int(stop_frame), self.default_steps["no_step"]))
 
               self.datapoints[ipoint] = {
                 'video_id': v,

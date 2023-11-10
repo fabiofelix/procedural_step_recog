@@ -143,7 +143,7 @@ class OmniGRU(nn.Module):
             self.frame_proj = nn.Linear(517, int(input_dim/2))  ## clip space (512) + bouding box (4) + prediction (1)
 
         self.gru = nn.GRU(input_dim, hidden_dim, n_layers, batch_first=True, dropout=drop_prob)
-        self.fc = nn.Linear(hidden_dim, output_dim + 2)  ## adding begin and end positions to the output
+        self.fc = nn.Linear(hidden_dim, output_dim + cfg.MODEL.APPEND_OUT_POSITIONS)  ## adding no step, begin, and end positions to the output
         self.relu = nn.ReLU()
 
         #self.load_state_dict(torch.load(checkpoint))

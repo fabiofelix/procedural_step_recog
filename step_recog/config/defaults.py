@@ -35,6 +35,7 @@ _C.MODEL.USE_AUDIO = False
 _C.MODEL.USE_OBJECTS = False
 _C.MODEL.USE_BN = False
 _C.MODEL.CHECKPOINT_FILE_PATH = ''
+_C.MODEL.APPEND_OUT_POSITIONS = 2
 
 # -----------------------------------------------------------------------------
 # Dataset options

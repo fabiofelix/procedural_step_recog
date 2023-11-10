@@ -69,10 +69,10 @@ def collate_fn(data):
              and label/length are scalars
     """
     omni,objs,frame,audio,lengths,labels,labels_t,frame_idx,ids = zip(*data)
-    nomni_feats = omni[0].shape[1]
-    nobj_feats = objs[0].shape[2]
-    nframe_feats = frame[0].shape[2]
-    naudio_feats =  0 if audio[0].shape[0] == 0 else audio[0].shape[1]
+    nomni_feats = 0 if omni[0].shape[0] == 0 else omni[0].shape[1]
+    nobj_feats = 0 if objs[0].shape[0] == 0 else objs[0].shape[2]
+    nframe_feats = 0 if frame[0].shape[0] == 0 else frame[0].shape[2]
+    naudio_feats = 0 if audio[0].shape[0] == 0 else audio[0].shape[1]
     max_length = max(lengths) 
     omni_new = []
     objs_new = []
@@ -84,45 +84,42 @@ def collate_fn(data):
     frame_idx_new = []
 
     for i in range(len(data)):
-        omni_empty = torch.zeros((max_length,nomni_feats))
-        if omni[i].shape[0] > 0:
-          omni_empty[:omni[i].shape[0],:] = omni[i]
-        omni_new.append(omni_empty)
+        if True:
+          omni_empty = torch.zeros((max_length,nomni_feats))
+          if nomni_feats > 0:
+            omni_empty[:omni[i].shape[0],:] = omni[i]
+          omni_new.append(omni_empty)
 
-        objs_empty = torch.zeros((max_length,25,nobj_feats))
-        if objs[i].shape[0] > 0:
-          objs_empty[:objs[i].shape[0],...] = objs[i]
-        objs_new.append(objs_empty)
+          objs_empty = torch.zeros((max_length,25,nobj_feats))
+          if nobj_feats > 0:
+            objs_empty[:objs[i].shape[0],...] = objs[i]
+          objs_new.append(objs_empty)
 
-        frame_empty = torch.zeros((max_length,1,nframe_feats))
-        if frame[i].shape[0] > 0:
-          frame_empty[:frame[i].shape[0],:] = frame[i]
-        frame_new.append(frame_empty)
+          frame_empty = torch.zeros((max_length,1,nframe_feats))
+          if nframe_feats > 0:
+            frame_empty[:frame[i].shape[0],:] = frame[i]
+          frame_new.append(frame_empty)
 
-        audio_empty = torch.zeros((max_length,naudio_feats))
-        if naudio_feats > 0:
-          audio_empty[:audio[i].shape[0],:] = audio[i]
-        audio_new.append(audio_empty)        
+          audio_empty = torch.zeros((max_length,naudio_feats))
+          if naudio_feats > 0:
+            audio_empty[:audio[i].shape[0],:] = audio[i]
+          audio_new.append(audio_empty)        
 
-        labels_empty = torch.zeros((max_length))
-        if labels[i].shape[0] > 0:
+          labels_empty = torch.zeros((max_length))
           labels_empty[:labels[i].shape[0]] = labels[i]
-        labels_new.append(labels_empty)
+          labels_new.append(labels_empty)
 
-        labels_t_empty = torch.zeros((max_length,2))
-        if labels_t[i].shape[0] > 0:
-          labels_t_empty[:labels_t[i].shape[0]] = labels_t[i]
-        labels_t_new.append(labels_t_empty)
+          labels_t_empty = torch.zeros((max_length,2))
+          labels_t_empty[:labels_t[i].shape[0]] = labels_t[i][...,-2:]
+          labels_t_new.append(labels_t_empty)
 
-        mask_empty = torch.zeros((max_length,1))
-        if labels[i].shape[0] > 0:
+          mask_empty = torch.zeros((max_length,1))
           mask_empty[:labels[i].shape[0]] = 1
-        mask_new.append(mask_empty)
+          mask_new.append(mask_empty)
 
-        frame_idx_empty = torch.zeros((max_length))
-        if frame_idx[i].shape[0] > 0:
+          frame_idx_empty = torch.zeros((max_length))
           frame_idx_empty[:frame_idx[i].shape[0]] = frame_idx[i]
-        frame_idx_new.append(frame_idx_empty)        
+          frame_idx_new.append(frame_idx_empty)        
 
     omni_new = torch.stack(omni_new)
     objs_new = torch.stack(objs_new)
@@ -178,11 +175,10 @@ def main():
               num_workers=cfg.DATALOADER.NUM_WORKERS,
               collate_fn=collate_fn,
               drop_last=False,
-              timeout=timeout)           
-
-      print('loading best model')
+              timeout=timeout)          
 
       if model is None:
+        print('loading best model')
         model = build_model(cfg)      
         weights = torch.load(cfg.MODEL.CHECKPOINT_FILE_PATH)
         model.load_state_dict(model.update_version(weights))
