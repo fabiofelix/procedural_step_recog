@@ -264,7 +264,7 @@ def extract_patches(image, boxes, patch_shape=None):
         patch = extract_image_patch(image, box, patch_shape=patch_shape)
         if patch is None:
             print(f"WARNING: Failed to extract image patch: {box}.")
-            patch = np.random.uniform(0, 255, (*patch_shape, 3) if patch_shape else image.shape, dtype=np.uint8)
+            patch = np.random.randint(0, 255, (*patch_shape, 3) if patch_shape else image.shape, dtype=np.uint8)
         patches.append(patch)
     return patches
 

@@ -187,7 +187,7 @@ The scripts in the steps 1, 2, 3, and 5 process the inputs and [squash](https://
     ```
     example: `bash scripts/extract_frames.sh /home/user/data/video /home/user/data/frame/rgb`
 
-    `Note: You have to run this script twice. One to extract the frames (setting extract="true" inside the script) and the second to squash the files (setting extract="false" inside the script). In the first time, run inside a singularity that has ffmpeg installed. In the second one, do not use a singularity. squash commands are not visuble in a singularity environment (we do not know why).`
+    `Note: You have to run this script twice. One to extract the frames (setting extract="true" inside the script) and the second to squash the files (setting extract="false" inside the script). In the first time, run inside a singularity that has ffmpeg installed. In the second one, do not use a singularity. squash commands are not visible in a singularity environment (we do not know why).`
 
 2. **Augment** video frames
 
