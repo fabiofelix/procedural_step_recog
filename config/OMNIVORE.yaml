@@ -14,5 +14,5 @@ DATALOADER:
   NUM_WORKERS: 8
   PIN_MEMORY: True
 OUTPUT:
-  LOCATION: '/homse/user/data/BBN/new/M1/feature/omnivore/test'
+  LOCATION: '/homse/user/data/BBN/new/M1/feature/omnivore/'
 BATCH_SIZE: 1

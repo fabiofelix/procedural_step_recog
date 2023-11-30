@@ -8,6 +8,8 @@ import glob
 import pdb
 
 DEFAULT_WINDOW_SIZE = 2
+MAX_OBJECTS = 25
+OBJECT_FRAME_FEATURES = 517
 
 ##TODO: It's returning the whole video
 class Milly_multifeature(torch.utils.data.Dataset):
@@ -37,7 +39,11 @@ class Milly_multifeature(torch.utils.data.Dataset):
             self.image_augs = False
             self.time_augs = False
         aux = [i for i in range(cfg.MODEL.OUTPUT_DIM + cfg.MODEL.APPEND_OUT_POSITIONS)]    
-        self.default_steps = {"real":[i for i in range (cfg.MODEL.OUTPUT_DIM)], "no_step": 0 if cfg.MODEL.APPEND_OUT_POSITIONS == 2 else cfg.MODEL.OUTPUT_DIM, "begin": aux[-2], "end": aux[-1]}    
+        self.default_steps = {"real":[i for i in range (cfg.MODEL.OUTPUT_DIM)], 
+                              "no_step": 0 if cfg.MODEL.APPEND_OUT_POSITIONS == 2 else cfg.MODEL.OUTPUT_DIM, 
+                              "begin": aux[-2], 
+                              "end": aux[-1],
+                              "no_step_t": 0.0}    
         self.append_out_positions = cfg.MODEL.APPEND_OUT_POSITIONS
         self.rng = np.random.default_rng()
         self._construct_loader(split)
@@ -89,11 +95,13 @@ class Milly_multifeature(torch.utils.data.Dataset):
            frames = [60] #TODO: OMNIVORE STARTS HERE
 
         labels = [self.default_steps["no_step"]]
-        labels_t = [[0 for i in range(self.append_out_positions)]]   ##TODO: WHY 0?
+        aux = [0.0 for i in range(self.append_out_positions)]
+        aux[-2:] = [self.default_steps["no_step_t"]] * 2
+        labels_t = [aux]
         wins = [DEFAULT_WINDOW_SIZE]
         insert_other = 0
         flip_other = 0
-
+      
         for istep, step in enumerate(drecord['steps_frames']):
             step_start = step[0]
             step_end = step[1]
@@ -103,9 +111,9 @@ class Milly_multifeature(torch.utils.data.Dataset):
             win_size = win_sizes[taug]
             for frame in np.arange(step_start_aug, step_end_aug, time_augs[taug]): 
                 frames.append(frame)
-                labels.append(self.default_steps["no_step"])
+                labels.append(step[2] if frame >= step_start and frame <= step_end else self.default_steps["no_step"])
                 aux = [0.0 for i in range(self.append_out_positions)]
-                aux[-2:] = [0.5, 0.5] ##TODO: WHY 0.5?
+                aux[-2:] = [self.default_steps["no_step_t"]] * 2
                 labels_t.append(aux)
                 wins.append(win_size)
             if istep == 0:
@@ -119,7 +127,7 @@ class Milly_multifeature(torch.utils.data.Dataset):
                     frames.extend([other_buffer[i] for i in np.arange(start_,start_+nsteps)])
                 labels.extend([self.default_steps["no_step"]]*nsteps)
                 aux = [0.0 for i in range(self.append_out_positions)]
-                aux[-2:] = [0.5, 0.5] ##TODO: WHY 0.5?
+                aux[-2:] = [self.default_steps["no_step_t"]] * 2
                 labels_t.append(aux*nsteps)                 
                 wins.extend([DEFAULT_WINDOW_SIZE]*nsteps)
             if self.time_augs:
@@ -135,7 +143,7 @@ class Milly_multifeature(torch.utils.data.Dataset):
             nparange = np.arange(step_start_aug, step_end_aug, time_augs[taug])
             for iframe,frame in enumerate(nparange):
                 frames.append(frame)
-                labels.append(step[2])
+                labels.append(step[2] if frame >= step_start and frame <= step_end else self.default_steps["no_step"])
 
                 aux = [0 for i in range(self.append_out_positions)]
                 aux[-2:] = [iframe/len(nparange),(len(nparange)-iframe)/len(nparange)]
@@ -148,16 +156,11 @@ class Milly_multifeature(torch.utils.data.Dataset):
                 nexttaug = 0
             taug = nexttaug
             #TODO: FABIO, review this filter code
-            frames_aux = frames
-            labels_aux = labels
-            frames = [f for f in frames_aux if f >= step_start]
-            labels = []
-
-            for f, _ in zip(frames_aux, labels_aux):
-              if f >= step_start:
-                labels.append( step[2]  if f <= step_end else self.default_steps["no_step"] )  
-            labels_t = [l for f, l in zip(frames_aux, labels_t) if f >= step_start]
-            wins = [w for f, w in zip(frames_aux, wins) if f >= step_start]
+            filter = np.array(frames) >= step_start
+            frames = np.array(frames)[filter].tolist()
+            labels = np.array(labels)[filter].tolist()
+            labels_t = np.array(labels_t)[filter].tolist()
+            wins   = np.array(wins)[filter].tolist()
             #TODO:
         if iaug > -1:
             omni_paths = ['{}/{}_aug{}_{}secwin/{}/frame_{:010d}.npy'.format(self.data_path,drecord['video_id'],iaug,w,self.video_layer,int(f)) for f,w in zip(frames,wins)]
@@ -196,12 +199,12 @@ class Milly_multifeature(torch.utils.data.Dataset):
               obj_conf = obj_conf[:,np.newaxis]
               obj_features = np.concatenate((obj_features,obj_boxes,obj_conf),axis=1)
             else:
-              obj_features = np.zeros((25,517))
+              obj_features = np.zeros((MAX_OBJECTS, OBJECT_FRAME_FEATURES))
             np.random.shuffle(obj_features)
-            if len(obj_features) > 25: # hard-coded for now
-                obj_features = obj_features[:25]
+            if len(obj_features) > MAX_OBJECTS: # hard-coded for now
+                obj_features = obj_features[:MAX_OBJECTS]
             else:
-                obj_features = np.pad(obj_features,((0,25-len(obj_features)),(0,0)))
+                obj_features = np.pad(obj_features,((0, MAX_OBJECTS - len(obj_features)), (0, 0)))
             obj_embeddings.append(obj_features)
             frame_idxs.append(f_idx)
             frame_embeddings.append(np.concatenate((np.load(f), extra_frame_info), axis = 1))
@@ -382,12 +385,12 @@ class Milly_multifeature_v2(Milly_multifeature):
                   obj_conf = obj_conf[:,np.newaxis]
                   obj_features = np.concatenate((obj_features,obj_boxes,obj_conf),axis=1)
                 else:
-                  obj_features = np.zeros((25,517))
+                  obj_features = np.zeros((MAX_OBJECTS, OBJECT_FRAME_FEATURES))
                 np.random.shuffle(obj_features)
-                if len(obj_features) > 25: # hard-coded for now
-                    obj_features = obj_features[:25]
+                if len(obj_features) > MAX_OBJECTS: # hard-coded for now
+                    obj_features = obj_features[:MAX_OBJECTS]
                 else:
-                    obj_features = np.pad(obj_features,((0,25-len(obj_features)),(0,0)))
+                    obj_features = np.pad(obj_features,((0, MAX_OBJECTS - len(obj_features)), (0, 0)))
                 obj_video_win.append(obj_features)
                 frame_idxs_win.append(f_idx)
                 frame_embeddings_win.append(np.concatenate((np.load(f), extra_frame_info), axis = 1))

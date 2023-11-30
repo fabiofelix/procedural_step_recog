@@ -120,29 +120,40 @@ class OmniGRU(nn.Module):
         input_dim = action_size
         hidden_dim = cfg.MODEL.HIDDEN_SIZE
         output_dim = cfg.MODEL.OUTPUT_DIM
-        self.use_audio = cfg.MODEL.USE_AUDIO
+        self.use_action = cfg.MODEL.USE_ACTION
         self.use_objects = cfg.MODEL.USE_OBJECTS
+        self.use_audio = cfg.MODEL.USE_AUDIO
         self.use_bn = cfg.MODEL.USE_BN
         self.skills = cfg.MODEL.SKILLS
 
         self.hidden_dim = hidden_dim
         self.n_layers = n_layers
+        gru_input_dim = 0
 
-        self.action_fc = nn.Linear(action_size, int(input_dim/2))
-        if self.use_bn: 
+        if self.use_action:
+          gru_input_dim += int(input_dim/2) if self.use_audio or self.use_objects else action_size
+          self.action_fc = nn.Linear(action_size, int(input_dim/2))
+          if self.use_bn: 
             self.action_bn = nn.BatchNorm1d(int(input_dim/2))
 
         if self.use_audio:
+            gru_input_dim += int(input_dim/2)
             self.audio_fc = nn.Linear(audio_size, int(input_dim/2))
             if self.use_bn: 
                 self.aud_bn = nn.BatchNorm1d(int(input_dim/2))
 
         if self.use_objects:
+            gru_input_dim += int(input_dim/2)
             self.obj_fc = nn.Linear(512, int(input_dim/2))
             self.obj_proj = nn.Linear(517, int(input_dim/2))    ## clip space (512) + bouding box (4) + prediction (1)
             self.frame_proj = nn.Linear(517, int(input_dim/2))  ## clip space (512) + bouding box (4) + prediction (1)
+            if self.use_bn: 
+              self.obj_bn = nn.BatchNorm1d(int(input_dim/2))            
 
-        self.gru = nn.GRU(input_dim, hidden_dim, n_layers, batch_first=True, dropout=drop_prob)
+        if gru_input_dim == 0:
+           raise Exception("GRU has to use at least one input (action, object/frame, or audio)")             
+
+        self.gru = nn.GRU(gru_input_dim, hidden_dim, n_layers, batch_first=True, dropout=drop_prob)
         self.fc = nn.Linear(hidden_dim, output_dim + cfg.MODEL.APPEND_OUT_POSITIONS)  ## adding no step, begin, and end positions to the output
         self.relu = nn.ReLU()
 
@@ -151,7 +162,7 @@ class OmniGRU(nn.Module):
     def forward(self, action, h=None, aud=None, objs=None, frame=None):
         x = action
 
-        if self.use_audio or self.use_objects:
+        if self.use_action and (self.use_audio or self.use_objects):
             action = self.action_fc(action)
             if self.use_bn:
                 action = self.action_bn(action.transpose(1, 2)).transpose(1, 2)
@@ -162,8 +173,10 @@ class OmniGRU(nn.Module):
             if self.use_bn:
                 aud = self.aud_bn(aud.transpose(1, 2)).transpose(1, 2)
             aud = self.relu(aud)
+            x = aud
 
-            x = torch.concat((action, aud), -1)
+            if self.use_action:
+               x = torch.concat((action, aud), -1)
 
         if self.use_objects:
             obj_proj = self.relu(self.obj_proj(objs))
@@ -172,19 +185,21 @@ class OmniGRU(nn.Module):
             values = torch.softmax(torch.sum(frame_proj * obj_proj, dim=-1, keepdims=True), dim=-2)
             obj_in = torch.sum(obj_proj * values, dim=-2)
             obj_in = self.relu(self.obj_fc(obj_in))
+            if self.use_bn:
+                obj_in = self.obj_bn(obj_in.transpose(1, 2)).transpose(1, 2)            
+            x = obj_in
             
-            if self.use_audio:
-              x = torch.concat((action, aud, obj_in), -1)
-            else:    
-              x = torch.concat((action, obj_in), -1)
+            if self.use_action:
+              if self.use_audio:
+                x = torch.concat((action, aud, obj_in), -1)
+              else:    
+                x = torch.concat((action, obj_in), -1)
+            elif self.use_audio:
+                x = torch.concat((aud, obj_in), -1)
 
         out, h = self.gru(x, h)
-        # print(1, out.shape, flush=True)
         out = self.relu(out[:, -1])
-        # print(2, out.shape, flush=True)
         out = self.fc(out)
-        # print(3, out.shape, flush=True)
-        # print(out, flush=True)
         return out, h
 
     def init_hidden(self, batch_size):

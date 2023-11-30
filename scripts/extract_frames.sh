@@ -4,7 +4,7 @@ SOURCE_PATH=$1
 OUTPUT_PATH=$2
 extract="true"
 
-echo "|- Processing " $path
+echo "|- Processing " $SOURCE_PATH
 mkdir -p $OUTPUT_PATH
 
 for subdir in $SOURCE_PATH/*;

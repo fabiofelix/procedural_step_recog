@@ -129,7 +129,7 @@ def collate_fn(data):
     mask_new = torch.stack(mask_new)
     frame_idx_new = torch.stack(frame_idx_new)
 
-    return omni_new.float(), objs_new.float(), frame_new.float(), audio_new.long(), labels_new.long(), labels_t_new.float(), mask_new.long(), frame_idx_new.long(), ids
+    return omni_new.float(), objs_new.float(), frame_new.float(), audio_new.float(), labels_new.long(), labels_t_new.float(), mask_new.long(), frame_idx_new.long(), ids
 
 def main():
     """
