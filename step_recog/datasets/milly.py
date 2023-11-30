@@ -140,8 +140,8 @@ class Milly_multifeature(torch.utils.data.Dataset):
             win_size = win_sizes[taug]
             step_start_aug = time_augs[taug]*int(step_end_aug/time_augs[taug])
             step_end_aug = time_augs[taug]*int(step_end/time_augs[taug]) + time_augs[taug]
-            nparange = np.arange(step_start_aug, step_end_aug, time_augs[taug])
-            for iframe,frame in enumerate(nparange):
+            nparange = np.arange(step_start_aug, step_end_aug + 1, time_augs[taug])
+            for iframe,frame in enumerate(nparange, 1):
                 frames.append(frame)
                 labels.append(step[2] if frame >= step_start and frame <= step_end else self.default_steps["no_step"])
 
