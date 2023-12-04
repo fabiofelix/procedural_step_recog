@@ -198,7 +198,7 @@ class OmniGRU(nn.Module):
                 x = torch.concat((aud, obj_in), -1)
 
         out, h = self.gru(x, h)
-        out = self.relu(out[:, -1])
+        out = self.relu(out)
         out = self.fc(out)
         return out, h
 

@@ -86,14 +86,18 @@ def train_step(epoch, model, criterion, criterion_t, optimizer, loader, is_train
     optimizer.zero_grad()
 
     out, h = model(action.to(device).float(), h, audio.to(device).float(), obj.to(device).float(), frame.to(device).float())
-    out_t  = torch.softmax(out[..., None, number_classes:], dim = -1)  #regression of time positions. Limits the results to [0, 1] range
-    out    = out[..., None, :number_classes]                           #classification of steps. CrossEntropyLoss consumes logits    
 
-    out_masked   = out * mask.to(device)
-    label_masked = mask.to(device) * label.to(device).float()
+    out_t   = torch.softmax(out[..., number_classes:], dim = -1)  #regression of time positions. Limits the results to [0, 1] range
+    out     = out[..., :number_classes]                           #classification of steps. CrossEntropyLoss consumes logits    
+    out     = torch.flatten(out, start_dim = 0, end_dim = 1)
+    out_t   = torch.flatten(out_t, start_dim = 0, end_dim = 1)
+    label   = torch.flatten(label, start_dim = 0, end_dim = 1)
+    label_t = torch.flatten(label_t.to(device), start_dim = 0, end_dim = 1)  
+    out_masked = out.to(device).float()
+    label_masked = label.to(device).float()
 
     class_loss = criterion(out_masked, label_masked)
-    pos_loss   = criterion_t(out_t * mask.to(device), mask.to(device) * label_t.to(device).float())
+    pos_loss   = criterion_t(out_t.to(device).float(), label_t.to(device).float())    
     loss       = class_loss + pos_loss
 
     if is_training:
@@ -104,9 +108,9 @@ def train_step(epoch, model, criterion, criterion_t, optimizer, loader, is_train
     sum_pos_loss   += pos_loss.item()
     sum_loss       += loss.item()
 
-    out_masked   = torch.argmax(out_masked, axis = 2)
-    label_masked = torch.argmax(label_masked, axis = 2)
-    sum_b_acc   += my_balanced_accuracy_score(np.concatenate(label_masked.cpu().numpy()), np.concatenate(out_masked.cpu().numpy()), labels = range(number_classes))
+    out_masked   = torch.argmax(out_masked, axis = -1)
+    label_masked = torch.argmax(label_masked, axis = -1)
+    sum_b_acc   += my_balanced_accuracy_score(label_masked.cpu().numpy(), out_masked.cpu().numpy(), labels = range(number_classes))    
 
     if is_training:
       progress.update(1)
@@ -119,7 +123,6 @@ def train_step(epoch, model, criterion, criterion_t, optimizer, loader, is_train
 
   return sum_loss/counter, sum_class_loss/counter, sum_pos_loss/counter, sum_b_acc/counter, grad_norm
 
-
 def train(train_loader, val_loader, cfg):
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
@@ -129,7 +132,7 @@ def train(train_loader, val_loader, cfg):
     # Defining loss function and optimizer
     criterion = nn.CrossEntropyLoss()
     criterion_t = nn.MSELoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=cfg.TRAIN.LR)
+    optimizer = torch.optim.SGD(model.parameters(), lr=cfg.TRAIN.LR, momentum = 0.9)
     
     print("Starting Training of OmniGRU model for step recognition")
     best_val_loss = float('inf')
@@ -182,17 +185,17 @@ def evaluate(model, data_loader, cfg, aggregate_avg = False):
     for action, obj, frame, audio, label, _, mask, frame_idx, id in tqdm.tqdm(data_loader, total = len(data_loader), desc = "Evaluation steps"):
       h = model.init_hidden(action.shape[0])
       out, _ = model(action.to(device).float(), h, audio.to(device).float(), obj.to(device).float(), frame.to(device).float())
-      out_aux = (out[..., None, :number_classes]*mask.to(device)).cpu().detach().numpy()
+      out_aux = out[..., :number_classes].cpu().detach().numpy()
 
       ##the same frame_idx/video could be returned in different iterations.
       ##accumulate this informations in a same structure
-      for video, frame, output in zip(id, frame_idx, out_aux):        
+      for video, frame, output, lb in zip(id, frame_idx, out_aux, label):        
         video = video[0]
 
         if not video in summary:
           summary[video] = {"frame_idx": {}, "label": {}, "before_gru_space":{}, "after_gru_space": {} }
 
-        for f, o, l in zip(frame, output, label):          
+        for f, o, l in zip(frame, output, lb):          
           f = int(f)
 
           if not f in summary[video]["frame_idx"]:
@@ -200,7 +203,7 @@ def evaluate(model, data_loader, cfg, aggregate_avg = False):
             summary[video]["label"][f] = []
 
           summary[video]["frame_idx"][f].append(o)  
-          summary[video]["label"][f].append(l.numpy())  
+          summary[video]["label"][f].append(l.item())  
 
 
     video_ids = []
@@ -225,7 +228,8 @@ def evaluate(model, data_loader, cfg, aggregate_avg = False):
           out_aux = np.mean(summary[v]["frame_idx"][f], axis = 0)
 
         outputs.append(out_aux)  
-        targets.append(np.max(np.concatenate(summary[v]["label"][f])))
+        possible_label, counts = np.unique(summary[v]["label"][f], return_counts=True)
+        targets.append(possible_label[np.argmax(counts)])
 
     video_ids = np.array(video_ids)
     frames  = np.array(frames)
