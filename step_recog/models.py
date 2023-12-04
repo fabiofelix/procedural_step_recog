@@ -137,18 +137,18 @@ class OmniGRU(nn.Module):
             self.action_bn = nn.BatchNorm1d(int(input_dim/2))
 
         if self.use_audio:
-            gru_input_dim += int(input_dim/2)
-            self.audio_fc = nn.Linear(audio_size, int(input_dim/2))
-            if self.use_bn: 
-                self.aud_bn = nn.BatchNorm1d(int(input_dim/2))
+          gru_input_dim += int(input_dim/2)
+          self.audio_fc = nn.Linear(audio_size, int(input_dim/2))
+          if self.use_bn: 
+              self.aud_bn = nn.BatchNorm1d(int(input_dim/2))
 
         if self.use_objects:
-            gru_input_dim += int(input_dim/2)
-            self.obj_fc = nn.Linear(512, int(input_dim/2))
-            self.obj_proj = nn.Linear(517, int(input_dim/2))    ## clip space (512) + bouding box (4) + prediction (1)
-            self.frame_proj = nn.Linear(517, int(input_dim/2))  ## clip space (512) + bouding box (4) + prediction (1)
-            if self.use_bn: 
-              self.obj_bn = nn.BatchNorm1d(int(input_dim/2))            
+          gru_input_dim += int(input_dim/2)
+          self.obj_fc = nn.Linear(512, int(input_dim/2))
+          self.obj_proj = nn.Linear(517, int(input_dim/2))    ## clip space (512) + bouding box (4) + prediction (1)
+          self.frame_proj = nn.Linear(517, int(input_dim/2))  ## clip space (512) + bouding box (4) + prediction (1)
+          if self.use_bn: 
+            self.obj_bn = nn.BatchNorm1d(int(input_dim/2))            
 
         if gru_input_dim == 0:
            raise Exception("GRU has to use at least one input (action, object/frame, or audio)")             

@@ -63,7 +63,7 @@ def build_model(cfg):
 
   return model  
 
-def train_step(epoch, model, criterion, criterion_t, optimizer, loader, is_training, device, cfg):
+def train_step(epoch, model, criterion, criterion_t, optimizer, loader, is_training, device, cfg, progress):
   if is_training:
     model.train()
     h = model.init_hidden(cfg.TRAIN.BATCH_SIZE)
@@ -83,10 +83,11 @@ def train_step(epoch, model, criterion, criterion_t, optimizer, loader, is_train
       h = model.init_hidden(len(action))
 
     h = torch.zeros_like(h)
+    optimizer.zero_grad()
 
     out, h = model(action.to(device).float(), h, audio.to(device).float(), obj.to(device).float(), frame.to(device).float())
-    out_t = out[..., None, number_classes:]                        #regression of time positions
-    out   = torch.softmax(out[..., None, :number_classes], dim=-1) #classification of steps
+    out_t  = torch.softmax(out[..., None, number_classes:], dim = -1)  #regression of time positions. Limits the results to [0, 1] range
+    out    = out[..., None, :number_classes]                           #classification of steps. CrossEntropyLoss consumes logits    
 
     out_masked   = out * mask.to(device)
     label_masked = mask.to(device) * label.to(device).float()
@@ -96,7 +97,6 @@ def train_step(epoch, model, criterion, criterion_t, optimizer, loader, is_train
     loss       = class_loss + pos_loss
 
     if is_training:
-      optimizer.zero_grad()
       loss.backward()
       optimizer.step()
 
@@ -108,12 +108,16 @@ def train_step(epoch, model, criterion, criterion_t, optimizer, loader, is_train
     label_masked = torch.argmax(label_masked, axis = 2)
     sum_b_acc   += my_balanced_accuracy_score(np.concatenate(label_masked.cpu().numpy()), np.concatenate(out_masked.cpu().numpy()), labels = range(number_classes))
 
-    if counter % 1 == 0:
-      print("|-- {}: epoch {}/{} - step: {}/{} - avg. cross entropy {} - avg. MSE {} - avg. Total Loss: {} - avg. Balanced accuracy {}".format("Training" if is_training else "Validation", epoch, cfg.TRAIN.EPOCHS, counter, len(loader), sum_class_loss/counter, sum_pos_loss/counter, sum_loss/counter, sum_b_acc/counter))     
+    if is_training:
+      progress.update(1)
+      progress.set_postfix({"Cross entropy": sum_class_loss/counter, 
+                            "MSE": sum_pos_loss/counter, 
+                            "Total loss": sum_loss/counter, 
+                            "Balanced acc": sum_b_acc/counter})
 
   grad_norm = np.sqrt(np.sum([torch.norm(p.grad).cpu().item()**2 for p in model.parameters() if p.grad is not None ]))
 
-  return sum_loss, sum_class_loss, sum_pos_loss, sum_b_acc, grad_norm
+  return sum_loss/counter, sum_class_loss/counter, sum_pos_loss/counter, sum_b_acc/counter, grad_norm
 
 
 def train(train_loader, val_loader, cfg):
@@ -130,42 +134,34 @@ def train(train_loader, val_loader, cfg):
     print("Starting Training of OmniGRU model for step recognition")
     best_val_loss = float('inf')
 
-    history = {"train_loss":[], "train_class_loss":[], "train_pos_loss": [], "val_loss":[], "val_class_loss":[], "val_pos_loss": [], "train_acc":[], "val_acc":[], "train_grad_norm": [], "val_grad_norm": [], "best_epoch": None}
+    history = {"train_loss":[], "train_class_loss":[], "train_pos_loss": [], "train_acc":[], "train_grad_norm": [], "val_loss":[], "val_class_loss":[], "val_pos_loss": [], "val_acc":[], "val_grad_norm": [], "best_epoch": None}
+    progress = tqdm.tqdm(total = len(train_loader), unit= "step", bar_format='{desc}|{bar:10}| {n_fmt}/{total_fmt} [{elapsed}<{remaining} - {rate_fmt}]{postfix}' )
 
     for epoch in range(1, cfg.TRAIN.EPOCHS + 1):
-      sum_loss, sum_class_loss, sum_pos_loss, sum_acc, grad_norm = train_step(epoch=epoch, model=model, criterion=criterion, criterion_t=criterion_t, optimizer=optimizer, loader=train_loader, is_training=True, device=device, cfg=cfg)
-      train_loss = sum_loss/len(train_loader)
-      train_class_loss = sum_class_loss/len(train_loader)
-      train_pos_loss = sum_pos_loss/len(train_loader)
-      train_acc = sum_acc/len(train_loader)
-
+      progress.set_description("Epoch {}/{} ".format(epoch, cfg.TRAIN.EPOCHS))
+      progress.reset()
+      
+      train_loss, train_class_loss, train_pos_loss, train_acc, grad_norm = train_step(epoch=epoch, model=model, criterion=criterion, criterion_t=criterion_t, optimizer=optimizer, loader=train_loader, is_training=True, device=device, cfg=cfg, progress=progress)
       history["train_loss"].append(train_loss)
       history["train_class_loss"].append(train_class_loss)
       history["train_pos_loss"].append(train_pos_loss)
       history["train_acc"].append(train_acc)
       history["train_grad_norm"].append(grad_norm)
 
-      print("|- {}: epoch {}/{} - avg. cross entropy {} - avg. MSE {} - avg. Total Loss: {} - avg. Balanced accuracy {}".format("Training", epoch, cfg.TRAIN.EPOCHS, train_class_loss, train_pos_loss, train_loss, train_acc))             
-
-      sum_loss, sum_class_loss, sum_pos_loss, sum_acc, grad_norm = train_step(epoch=epoch, model=model, criterion=criterion, criterion_t=criterion_t, optimizer=optimizer, loader=val_loader, is_training=False, device=device, cfg=cfg)
-      val_loss = sum_loss/len(val_loader)
-      val_class_loss = sum_class_loss/len(val_loader)
-      val_pos_loss = sum_pos_loss/len(val_loader)
-      val_acc  = sum_acc/len(val_loader)
-
-
+      val_loss, val_class_loss, val_pos_loss, val_acc, grad_norm = train_step(epoch=epoch, model=model, criterion=criterion, criterion_t=criterion_t, optimizer=optimizer, loader=val_loader, is_training=False, device=device, cfg=cfg, progress=progress)
       history["val_loss"].append(val_loss)
       history["val_class_loss"].append(val_class_loss)
       history["val_pos_loss"].append(val_pos_loss)
       history["val_acc"].append(val_acc)
       history["val_grad_norm"].append(grad_norm)
 
-      print("|- {}: epoch {}/{} - avg. cross entropy {} - avg. MSE {} - avg. Total Loss: {} - avg. Balanced accuracy {}".format("Validation", epoch, cfg.TRAIN.EPOCHS, val_class_loss, val_pos_loss, val_loss, val_acc))             
+      progress.set_postfix({"Cross entropy": train_class_loss, "MSE": train_pos_loss, "Total loss": train_loss, "Balanced acc": train_acc, 
+                            "val Cross entropy": val_class_loss, "val MSE": val_pos_loss, "val Total loss": val_loss, "val Balanced acc": val_acc})
+      print("")
 
       if val_loss < best_val_loss:
         history["best_epoch"] = epoch
         best_val_loss = val_loss
-        print("|- Found a new best validation loss (saving model) in the epoch {}".format(epoch))     
         torch.save(model.state_dict(), os.path.join(cfg.OUTPUT.LOCATION, 'step_gru_best_model.pt'))
 
     plot_history(history, cfg)        
@@ -183,7 +179,7 @@ def evaluate(model, data_loader, cfg, aggregate_avg = False):
     number_classes = cfg.MODEL.OUTPUT_DIM if cfg.MODEL.APPEND_OUT_POSITIONS == 2 else cfg.MODEL.OUTPUT_DIM + 1
     summary = {}
 
-    for action, obj, frame, audio, label, _, mask, frame_idx, id in tqdm.tqdm(data_loader):
+    for action, obj, frame, audio, label, _, mask, frame_idx, id in tqdm.tqdm(data_loader, total = len(data_loader), desc = "Evaluation steps"):
       h = model.init_hidden(action.shape[0])
       out, _ = model(action.to(device).float(), h, audio.to(device).float(), obj.to(device).float(), frame.to(device).float())
       out_aux = (out[..., None, :number_classes]*mask.to(device)).cpu().detach().numpy()

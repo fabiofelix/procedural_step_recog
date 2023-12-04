@@ -156,7 +156,7 @@ class Milly_multifeature(torch.utils.data.Dataset):
                 nexttaug = 0
             taug = nexttaug
             #TODO: FABIO, review this filter code
-            filter = np.array(frames) >= step_start
+            filter = np.logical_and(np.array(frames) >= step_start, np.array(frames) <= step_end)
             frames = np.array(frames)[filter].tolist()
             labels = np.array(labels)[filter].tolist()
             labels_t = np.array(labels_t)[filter].tolist()
@@ -414,17 +414,18 @@ class Milly_multifeature_v2(Milly_multifeature):
         return torch.from_numpy(omni_embeddings), torch.from_numpy(obj_embeddings), torch.from_numpy(frame_embeddings), torch.from_numpy(audio_emgeddings), torch.from_numpy(np.array(omni_embeddings.shape[0])), torch.from_numpy(labels), torch.from_numpy(labels_t), torch.from_numpy(frame_idxs), np.array([drecord['video_id']])       
     
 class Milly_multifeature_v3(Milly_multifeature):
+    def _contains_step(self, step_list, new_step):
+      for step in step_list:
+        if new_step[0] == step[0] and new_step[1] == step[1]:
+          return True
+      return False
+
     def _construct_loader(self, split):
         self.annotations = pd.read_csv(self.annotations_file,usecols=['video_id','start_frame','stop_frame','narration','verb_class'])
         self.datapoints = {}
         ipoint = 0
         video_ids = sorted(list(set(self.annotations.video_id)))
-        rand_idx_ = self.rng.choice(len(video_ids),len(video_ids),replace=False)
-        if split == 'train':
-            video_ids = [video_ids[i] for i in rand_idx_[:int(len(video_ids)*0.85)]]
-        elif split == 'validation':
-            video_ids = [video_ids[i] for i in rand_idx_[int(len(video_ids)*0.85):]]
-        for v in tqdm.tqdm(video_ids, total=len(video_ids)):
+        for v in tqdm.tqdm(video_ids, total=len(video_ids), desc = "Videos"):
             # get video annotations
             vid_ann = self.annotations[self.annotations.video_id==v]
             start_frames = vid_ann.start_frame[1:].to_numpy()
@@ -446,8 +447,9 @@ class Milly_multifeature_v3(Milly_multifeature):
               steps_ = []
 
               for _, step in vid_ann.iterrows():
-                  if stop_frame >= step.start_frame and stop_frame <= step.stop_frame:
-                    steps_.append(( int(start_frame), int(stop_frame), step.verb_class))
+                  new_step = ( int(start_frame), int(stop_frame), step.verb_class)
+                  if stop_frame >= step.start_frame and stop_frame <= step.stop_frame and not self._contains_step(steps_, new_step):
+                    steps_.append(new_step)
 
               if len(steps_) == 0:
                 steps_.append((int(start_frame), int(stop_frame), self.default_steps["no_step"]))
