@@ -9,31 +9,36 @@ mkdir -p $OUTPUT_PATH
 
 for subdir in $SOURCE_PATH/*;
 do
-  break
-
   file=$subdir/*.mp4
-  squash_output=$OUTPUT_PATH/$(basename $subdir).sqf
-  tmp=$OUTPUT_PATH/tmp_$(basename $subdir)
-  output=$tmp/frame/$(basename $subdir)
+  name=$(basename $subdir)
+  squash_output=$OUTPUT_PATH/$name.sqf
+  tmp=$OUTPUT_PATH/tmp_$name
+  output=$tmp/frame/$name
 
   if ls $file 1> /dev/null 2>&1; then
     if ls $subdir/*.skill_labels_by_frame.txt 1> /dev/null 2>&1; then
       if ls $subdir/THIS_DATA_SET_WAS_EXCLUDED 1> /dev/null 2>&1; then
-        echo "|-- ERROR: THIS_DATA_SET_WAS_EXCLUDED $file"
+        echo "|-- ERROR: THIS_DATA_SET_WAS_EXCLUDED $subdir"
       else
-	      echo "|-- Extracting frames from " $file
+        file_rows=`cat $subdir/$name.skill_labels_by_frame.txt | wc -l`
 
-        mkdir -p $output
+        if [[ $file_rows == 0 ]]; then
+          echo "|-- ERROR: *skill_labels_by_frame.txt has no lines $subdir"
+        else  
+          echo "|-- Extracting frames from " $file
 
-        if [[ $extract == "true" ]]; then
-          ffmpeg -i $file -qscale:v 2 "$output/frame_%010d.jpg" 
-        else
-          echo "|-- Creating SquashFS for $subdir"
-          find $tmp/frame -type d -exec chmod 755 {} \;
-          find $tmp/frame -type f -exec chmod 644 {} \;
- 
-          mksquashfs $tmp/frame $squash_output -keep-as-directory -noappend && rm -rv $tmp
-        fi
+          mkdir -p $output
+
+          if [[ $extract == "true" ]]; then
+            ffmpeg -i $file -qscale:v 2 "$output/frame_%010d.jpg" 
+          else
+            echo "|-- Creating SquashFS for $subdir"
+            find $tmp/frame -type d -exec chmod 755 {} \;
+            find $tmp/frame -type f -exec chmod 644 {} \;
+  
+            mksquashfs $tmp/frame $squash_output -keep-as-directory -noappend && rm -rv $tmp
+          fi
+        fi  
       fi
     else
       echo "|-- ERROR: There is no *skill_labels_by_frame.txt file inside $subdir"

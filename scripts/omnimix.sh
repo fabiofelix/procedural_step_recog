@@ -1,8 +1,10 @@
 #!/bin/bash
 
 ACTION_PATH=$1/*sqf
+ACTION_VAL_PATH=$1/val_subset/*sqf
 ACTION_TEST_PATH=$1/test_subset/*sqf
 IMG_PATH=$2/*sqf
+IMG_VAL_PATH=$2/val_subset/*sqf
 IMG_TEST_PATH=$2/test_subset/*sqf
 AUDIO_PATH=$3/*sqf
 CONFIG_PATH=$4
@@ -12,12 +14,18 @@ if [[ ! -z $1 ]]; then
   for action in $ACTION_PATH; do
     ADD_OVER="$ADD_OVER --overlay $action:ro"
   done
+  for action in $ACTION_VAL_PATH; do
+    ADD_OVER="$ADD_OVER --overlay $action:ro"
+  done
   for action in $ACTION_TEST_PATH; do
     ADD_OVER="$ADD_OVER --overlay $action:ro"
   done
 fi
 if [[ ! -z $2 ]]; then
   for img in $IMG_PATH; do
+    ADD_OVER="$ADD_OVER --overlay $img:ro"
+  done
+  for img in $IMG_VAL_PATH; do
     ADD_OVER="$ADD_OVER --overlay $img:ro"
   done
   for img in $IMG_TEST_PATH; do

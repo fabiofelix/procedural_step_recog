@@ -110,18 +110,19 @@ def train_step(epoch, model, criterion, criterion_t, optimizer, loader, is_train
 
     out_masked   = torch.argmax(out_masked, axis = -1)
     label_masked = torch.argmax(label_masked, axis = -1)
-    sum_b_acc   += my_balanced_accuracy_score(label_masked.cpu().numpy(), out_masked.cpu().numpy(), labels = range(number_classes))    
+    sum_b_acc   += my_balanced_accuracy_score(label_masked.cpu().numpy(), out_masked.cpu().numpy())    
+    sum_acc     += accuracy_score(label_masked.cpu().numpy(), out_masked.cpu().numpy())
 
     if is_training:
       progress.update(1)
       progress.set_postfix({"Cross entropy": sum_class_loss/counter, 
                             "MSE": sum_pos_loss/counter, 
                             "Total loss": sum_loss/counter, 
-                            "Balanced acc": sum_b_acc/counter})
+                            "acc": sum_acc/counter})
 
   grad_norm = np.sqrt(np.sum([torch.norm(p.grad).cpu().item()**2 for p in model.parameters() if p.grad is not None ]))
 
-  return sum_loss/counter, sum_class_loss/counter, sum_pos_loss/counter, sum_b_acc/counter, grad_norm
+  return sum_loss/counter, sum_class_loss/counter, sum_pos_loss/counter, sum_b_acc/counter, sum_acc/counter, grad_norm
 
 def train(train_loader, val_loader, cfg):
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
@@ -132,34 +133,36 @@ def train(train_loader, val_loader, cfg):
     # Defining loss function and optimizer
     criterion = nn.CrossEntropyLoss()
     criterion_t = nn.MSELoss()
-    optimizer = torch.optim.SGD(model.parameters(), lr=cfg.TRAIN.LR, momentum = 0.9)
+    optimizer = torch.optim.Adam(model.parameters(), lr=cfg.TRAIN.LR)
     
-    print("Starting Training of OmniGRU model for step recognition")
+    print("Training of step recognition for  {}: model {} - optimizer {} - {} data".format(cfg.MODEL.SKILLS[0], model.__class__.__name__, optimizer.__class__.__name__, "aug" if cfg.DATASET.INCLUDE_IMAGE_AUGMENTATIONS else "raw" ))
     best_val_loss = float('inf')
 
-    history = {"train_loss":[], "train_class_loss":[], "train_pos_loss": [], "train_acc":[], "train_grad_norm": [], "val_loss":[], "val_class_loss":[], "val_pos_loss": [], "val_acc":[], "val_grad_norm": [], "best_epoch": None}
+    history = {"train_loss":[], "train_class_loss":[], "train_pos_loss": [], "train_acc":[], "train_b_acc":[], "train_grad_norm": [], "val_loss":[], "val_class_loss":[], "val_pos_loss": [], "val_acc":[], "val_b_acc":[], "val_grad_norm": [], "best_epoch": None}
     progress = tqdm.tqdm(total = len(train_loader), unit= "step", bar_format='{desc}|{bar:10}| {n_fmt}/{total_fmt} [{elapsed}<{remaining} - {rate_fmt}]{postfix}' )
 
     for epoch in range(1, cfg.TRAIN.EPOCHS + 1):
       progress.set_description("Epoch {}/{} ".format(epoch, cfg.TRAIN.EPOCHS))
       progress.reset()
       
-      train_loss, train_class_loss, train_pos_loss, train_acc, grad_norm = train_step(epoch=epoch, model=model, criterion=criterion, criterion_t=criterion_t, optimizer=optimizer, loader=train_loader, is_training=True, device=device, cfg=cfg, progress=progress)
+      train_loss, train_class_loss, train_pos_loss, train_b_acc, train_acc, grad_norm = train_step(epoch=epoch, model=model, criterion=criterion, criterion_t=criterion_t, optimizer=optimizer, loader=train_loader, is_training=True, device=device, cfg=cfg, progress=progress)
       history["train_loss"].append(train_loss)
       history["train_class_loss"].append(train_class_loss)
       history["train_pos_loss"].append(train_pos_loss)
       history["train_acc"].append(train_acc)
+      history["train_b_acc"].append(train_b_acc)      
       history["train_grad_norm"].append(grad_norm)
 
-      val_loss, val_class_loss, val_pos_loss, val_acc, grad_norm = train_step(epoch=epoch, model=model, criterion=criterion, criterion_t=criterion_t, optimizer=optimizer, loader=val_loader, is_training=False, device=device, cfg=cfg, progress=progress)
+      val_loss, val_class_loss, val_pos_loss, val_b_acc, val_acc, grad_norm = train_step(epoch=epoch, model=model, criterion=criterion, criterion_t=criterion_t, optimizer=optimizer, loader=val_loader, is_training=False, device=device, cfg=cfg, progress=progress)
       history["val_loss"].append(val_loss)
       history["val_class_loss"].append(val_class_loss)
       history["val_pos_loss"].append(val_pos_loss)
       history["val_acc"].append(val_acc)
+      history["val_b_acc"].append(val_b_acc)      
       history["val_grad_norm"].append(grad_norm)
 
-      progress.set_postfix({"Cross entropy": train_class_loss, "MSE": train_pos_loss, "Total loss": train_loss, "Balanced acc": train_acc, 
-                            "val Cross entropy": val_class_loss, "val MSE": val_pos_loss, "val Total loss": val_loss, "val Balanced acc": val_acc})
+      progress.set_postfix({"Cross entropy": train_class_loss, "MSE": train_pos_loss, "Total loss": train_loss, "acc": train_acc, 
+                            "val Cross entropy": val_class_loss, "val MSE": val_pos_loss, "val Total loss": val_loss, "val acc": val_acc})
       print("")
 
       if val_loss < best_val_loss:
@@ -262,7 +265,10 @@ def plot_history(history, cfg):
   plot_data(history["train_loss"], history["val_loss"], ylabel = "Total Loss", mark_best = history["best_epoch"])    
 
   plt.subplot(2, 3, 4)    
-  plot_data(history["train_acc"], history["val_acc"], xlabel = "Epoch", ylabel = "Balanced accuracy", mark_best = history["best_epoch"])     
+  plot_data(history["train_acc"], history["val_acc"], xlabel = "Epoch", ylabel = "Categorical accuracy", mark_best = history["best_epoch"])     
+
+#  plt.subplot(2, 3, 5)    
+#  plot_data(history["train_b_acc"], history["val_b_acc"], xlabel = "Epoch", ylabel = "Balanced accuracy", mark_best = history["best_epoch"])       
 
   plt.subplot(2, 3, 5)    
   plot_data(history["train_grad_norm"], [], xlabel = "Epoch", ylabel = "Gradient norm", mark_best = history["best_epoch"])       
@@ -298,7 +304,7 @@ def save_evaluation(expected, predicted, classes, cfg, class_names = None, label
     file.write(classification_report(expected, predicted, zero_division = 0, labels = classes, target_names = label_order)) 
     file.write("\n\n")     
     file.write("Categorical accuracy: {:.2f}\n".format(accuracy_score(expected, predicted)))
-    file.write("Balanced accuracy: {:.2f}\n".format(my_balanced_accuracy_score(expected, predicted, labels = classes)))
+    file.write("Balanced accuracy: {:.2f}\n".format(my_balanced_accuracy_score(expected, predicted)))
   finally:
     file.close() 
   #========================================================================================================================#
@@ -325,10 +331,9 @@ def save_evaluation(expected, predicted, classes, cfg, class_names = None, label
     sb.reset_orig()
 
 ##https://github.com/scikit-learn/scikit-learn/blob/093e0cf14/sklearn/metrics/_classification.py
-##Passing labels to confusion_matrix
 ##treating division-by-zero
-def my_balanced_accuracy_score(y_true, y_pred, *, sample_weight=None, adjusted=False, labels=None):
-    C = confusion_matrix(y_true, y_pred, sample_weight=sample_weight, labels=labels)
+def my_balanced_accuracy_score(y_true, y_pred, *, sample_weight=None, adjusted=False):
+    C = confusion_matrix(y_true, y_pred, sample_weight=sample_weight)
     ## with np.errstate(divide="ignore", invalid="ignore"):
     ##     per_class = np.diag(C) / C.sum(axis=1)
     per_class = np.divide(np.diag(C), C.sum(axis=1), out=np.zeros_like(np.diag(C), dtype='float64'), where=C.sum(axis=1)!=0)

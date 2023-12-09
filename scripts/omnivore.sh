@@ -63,7 +63,7 @@ sbatch <<EOSBATCH
 #SBATCH --time 24:00:00
 #SBATCH --gres gpu:1
 #SBATCH --job-name action-$NAME
-#SBATCH --output logs/%J_$NAME.out
+#SBATCH --output logs/%J_action-$NAME.out
 #SBATCH --mail-type=BEGIN,END,ERROR
 #SBATCH --mail-user=$USER@nyu.edu
 
