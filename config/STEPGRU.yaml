@@ -6,13 +6,18 @@ MODEL:
 #  SKILLS: ['pinwheels', 'coffee', 'mugcake']
 #  DRIVE_ID: 1ArZFX4LuuB4SbmmWSDit4S8gPhkc2DRq
 ##BBN-M1-Trauma-Assessment
-  OUTPUT_DIM: 13
-  SKILLS: ['trauma']
-  DRIVE_ID: ""
+#  OUTPUT_DIM: 13
+#  SKILLS: ['trauma']
+#  DRIVE_ID: ""
 ##BBN-M2-Tourniquet
-#  OUTPUT_DIM: 9
+#  OUTPUT_DIM: 8
 #  SKILLS: ['tourniquet']
 #  DRIVE_ID: 1ArZFX4LuuB4SbmmWSDit4S8gPhkc2DRq
+#  DRIVE_ID: ""
+##BBN-M3-Pressure-Dressing
+  OUTPUT_DIM: 5
+  SKILLS: ['pressure']
+  DRIVE_ID: ""
 ##BBN-M5-X-Stat
 #  OUTPUT_DIM: 6 # offset 34
 #  SKILLS: ['m5']
@@ -45,7 +50,8 @@ DATALOADER:
 TRAIN:
   ENABLE: True
   NUM_GPUS: 1
-  BATCH_SIZE: 32 
+  BATCH_SIZE: 32
+  OPT: "rmsprop"  #adam sgd rmsprop
   LR: 0.001
   EPOCHS: 15
 OUTPUT:

@@ -74,6 +74,7 @@ def train_step(epoch, model, criterion, criterion_t, optimizer, loader, is_train
   sum_pos_loss = 0.
   sum_loss = 0.
   sum_b_acc = 0.
+  sum_acc = 0.
   number_classes = cfg.MODEL.OUTPUT_DIM if cfg.MODEL.APPEND_OUT_POSITIONS == 2 else cfg.MODEL.OUTPUT_DIM + 1
 
   for counter, (action, obj, frame, audio, label, label_t, mask, _, _) in enumerate(loader, 1):
@@ -133,9 +134,15 @@ def train(train_loader, val_loader, cfg):
     # Defining loss function and optimizer
     criterion = nn.CrossEntropyLoss()
     criterion_t = nn.MSELoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=cfg.TRAIN.LR)
-    
-    print("Training of step recognition for  {}: model {} - optimizer {} - {} data".format(cfg.MODEL.SKILLS[0], model.__class__.__name__, optimizer.__class__.__name__, "aug" if cfg.DATASET.INCLUDE_IMAGE_AUGMENTATIONS else "raw" ))
+
+    if cfg.TRAIN.OPT == "adam":
+      optimizer = torch.optim.Adam(model.parameters(), lr=cfg.TRAIN.LR)
+    elif cfg.TRAIN.OPT == "sgd":
+      optimizer = torch.optim.SGD(model.parameters(), lr=cfg.TRAIN.LR, momentum = 0.9)
+    elif cfg.TRAIN.OPT == "rmsprop":
+      optimizer = torch.optim.RMSprop(model.parameters(), lr=cfg.TRAIN.LR)
+
+    print("Training of step recognition for {}: model {} - optimizer {} - {} data".format(cfg.MODEL.SKILLS[0], model.__class__.__name__, optimizer.__class__.__name__, "aug" if cfg.DATASET.INCLUDE_IMAGE_AUGMENTATIONS else "raw" ))
     best_val_loss = float('inf')
 
     history = {"train_loss":[], "train_class_loss":[], "train_pos_loss": [], "train_acc":[], "train_b_acc":[], "train_grad_norm": [], "val_loss":[], "val_class_loss":[], "val_pos_loss": [], "val_acc":[], "val_b_acc":[], "val_grad_norm": [], "best_epoch": None}
