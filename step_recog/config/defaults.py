@@ -13,9 +13,13 @@ _C.TRAIN = CfgNode()
 _C.TRAIN.ENABLE = True
 _C.TRAIN.NUM_GPUS = 1
 _C.TRAIN.BATCH_SIZE = 32
+_C.TRAIN.EPOCHS = 5
 _C.TRAIN.OPT = "adam"
 _C.TRAIN.LR = 0.001
-_C.TRAIN.EPOCHS = 5
+_C.TRAIN.MOMENTUM = 0.0
+_C.TRAIN.WEIGHT_DECAY = 0.0
+_C.TRAIN.SCHEDULER = None
+_C.TRAIN.RETURN_METRICS = False
 
 # -----------------------------------------------------------------------------
 # EVAL options

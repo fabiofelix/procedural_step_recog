@@ -10,16 +10,18 @@ import pdb
 DEFAULT_WINDOW_SIZE = 2
 MAX_OBJECTS = 25
 OBJECT_FRAME_FEATURES = 517
+ACTION_FEATURES = 1024
 
 ##TODO: It's returning the whole video
 class Milly_multifeature(torch.utils.data.Dataset):
 
-    def __init__(self, cfg, split='train'):
+    def __init__(self, cfg, split='train', filter=None):
 
         self.data_path = cfg.DATASET.LOCATION
         self.data_path_audio = cfg.DATASET.AUDIO_LOCATION
         self.obj_frame_path = cfg.DATASET.OBJECT_FRAME_LOCATION
         self.video_layer = cfg.DATASET.VIDEO_LAYER
+        self.data_filter = filter
 
         if split == 'train':
           self.annotations_file = cfg.DATASET.TR_ANNOTATIONS_FILE
@@ -76,8 +78,8 @@ class Milly_multifeature(torch.utils.data.Dataset):
                 }
             ipoint += 1
 
-    def __getitem__(self, index, time_augs = [15,7.5,3.75], win_sizes = [2,4,1]):
-        return self.do_getitem(index, time_augs, win_sizes)
+    def __getitem__(self, index, time_augs = [15,7.5,3.75], win_sizes = [4,2,1]):
+      return self.do_getitem(index, time_augs if self.time_augs else [15], win_sizes if self.time_augs else [2])
 
     def do_getitem(self, index, time_augs, win_sizes):
         if self.image_augs:
@@ -88,12 +90,7 @@ class Milly_multifeature(torch.utils.data.Dataset):
         
         # buffer up filenames and labels
         taug = 0
-        curr_frame = 120
-        frames = [int(self.video_fps * self.slide_win_size)]
-
-        if drecord['steps_frames'][0][0] < frames[0]:
-           frames = [60] #TODO: OMNIVORE STARTS HERE
-
+        frames = []        
         labels = [self.default_steps["no_step"]]
         aux = [0.0 for i in range(self.append_out_positions)]
         aux[-2:] = [self.default_steps["no_step_t"]] * 2
@@ -107,10 +104,16 @@ class Milly_multifeature(torch.utils.data.Dataset):
             step_start = step[0]
             step_end = step[1]
 
-            step_start_aug = time_augs[taug]*int(np.max(frames)/time_augs[taug]) + time_augs[taug]
-            step_end_aug = time_augs[taug]*int(step_start/time_augs[taug]) + time_augs[taug]
             win_size = win_sizes[taug]
-            for frame in np.arange(step_start_aug, step_end_aug, time_augs[taug]): 
+
+            if len(frames) == 0:
+              frames = [ int(self.video_fps * win_size) ]
+
+            step_start_aug = time_augs[taug] * int(np.max(frames) / time_augs[taug]) + time_augs[taug]
+            step_end_aug   = time_augs[taug] * int(step_start     / time_augs[taug]) + time_augs[taug]
+            nparange = np.arange(step_start_aug, step_end_aug, time_augs[taug])
+            nparange = nparange[nparange >= win_size]
+            for frame in nparange: 
                 frames.append(frame)
                 labels.append(step[2] if frame >= step_start and frame <= step_end else self.default_steps["no_step"])
                 aux = [0.0 for i in range(self.append_out_positions)]
@@ -139,9 +142,10 @@ class Milly_multifeature(torch.utils.data.Dataset):
                 nexttaug = 0
             taug = nexttaug
             win_size = win_sizes[taug]
-            step_start_aug = time_augs[taug]*int(step_end_aug/time_augs[taug])
-            step_end_aug = time_augs[taug]*int(step_end/time_augs[taug]) + time_augs[taug]
+            step_start_aug = time_augs[taug] * int(step_end_aug / time_augs[taug])
+            step_end_aug   = time_augs[taug] * int(step_end     / time_augs[taug]) + time_augs[taug]
             nparange = np.arange(step_start_aug, step_end_aug + 1, time_augs[taug])
+            nparange = nparange[nparange >= int(self.video_fps * win_size)]
             for iframe,frame in enumerate(nparange, 1):
                 frames.append(frame)
                 labels.append(step[2] if frame >= step_start and frame <= step_end else self.default_steps["no_step"])
@@ -157,6 +161,7 @@ class Milly_multifeature(torch.utils.data.Dataset):
                 nexttaug = 0
             taug = nexttaug
             #TODO: FABIO, review this filter code
+            frames = [int(f) for f in frames]
             filter = np.logical_and(np.array(frames) >= step_start, np.array(frames) <= step_end)
             frames = np.array(frames)[filter].tolist()
             labels = np.array(labels)[filter].tolist()
@@ -164,13 +169,13 @@ class Milly_multifeature(torch.utils.data.Dataset):
             wins   = np.array(wins)[filter].tolist()
             #TODO:
         if iaug > -1:
-            omni_paths = ['{}/{}_aug{}_{}secwin/{}/frame_{:010d}.npy'.format(self.data_path,drecord['video_id'],iaug,w,self.video_layer,int(f)) for f,w in zip(frames,wins)]
-            obj_paths = ['{}/aug_yolo/{}_aug{}/frame_{:010d}.npz'.format(self.obj_frame_path, drecord['video_id'],iaug,int(f)) for f in frames]
-            frame_paths = ['{}/aug_clip/{}_aug{}/frame_{:010d}.npy'.format(self.obj_frame_path, drecord['video_id'],iaug,int(f)) for f in frames]
+          omni_paths = ['{}/{}_aug{}_{}secwin/{}/frame_{:010d}.npy'.format(self.data_path,drecord['video_id'],iaug,w,self.video_layer,int(f)) for f,w in zip(frames,wins)]
+          obj_paths = ['{}/aug_yolo/{}_aug{}/frame_{:010d}.npz'.format(self.obj_frame_path, drecord['video_id'],iaug,int(f)) for f in frames]
+          frame_paths = ['{}/aug_clip/{}_aug{}/frame_{:010d}.npy'.format(self.obj_frame_path, drecord['video_id'],iaug,int(f)) for f in frames]
         else:
-            omni_paths = ['{}/{}_{}secwin/{}/frame_{:010d}.npy'.format(self.data_path,drecord['video_id'],w,self.video_layer,int(f)) for f,w in zip(frames,wins)]
-            obj_paths = ['{}/yolo/{}/frame_{:010d}.npz'.format(self.obj_frame_path, drecord['video_id'],int(f)) for f in frames]
-            frame_paths = ['{}/clip/{}/frame_{:010d}.npy'.format(self.obj_frame_path, drecord['video_id'],int(f)) for f in frames]
+          omni_paths = ['{}/{}_{}secwin/{}/frame_{:010d}.npy'.format(self.data_path,drecord['video_id'],w,self.video_layer,int(f)) for f,w in zip(frames,wins)]
+          obj_paths = ['{}/yolo/{}/frame_{:010d}.npz'.format(self.obj_frame_path, drecord['video_id'],int(f)) for f in frames]
+          frame_paths = ['{}/clip/{}/frame_{:010d}.npy'.format(self.obj_frame_path, drecord['video_id'],int(f)) for f in frames]
 
         audio_paths = []
         if self.data_path_audio != "":
@@ -212,6 +217,11 @@ class Milly_multifeature(torch.utils.data.Dataset):
 
         for _, a in zip(omni_paths, audio_paths):    
           audio_emgeddings.append(np.load(a))
+
+        if len(frame_idxs) == 0:
+           omni_embeddings.append(np.zeros((ACTION_FEATURES)))
+           obj_embeddings.append(np.zeros((MAX_OBJECTS, OBJECT_FRAME_FEATURES)))
+           frame_embeddings.append(np.zeros((1, OBJECT_FRAME_FEATURES)))
 
         omni_embeddings = np.array(omni_embeddings)
         obj_embeddings = np.array(obj_embeddings)
@@ -415,25 +425,30 @@ class Milly_multifeature_v2(Milly_multifeature):
         return torch.from_numpy(omni_embeddings), torch.from_numpy(obj_embeddings), torch.from_numpy(frame_embeddings), torch.from_numpy(audio_emgeddings), torch.from_numpy(np.array(omni_embeddings.shape[0])), torch.from_numpy(labels), torch.from_numpy(labels_t), torch.from_numpy(frame_idxs), np.array([drecord['video_id']])       
     
 class Milly_multifeature_v3(Milly_multifeature):
-    def _contains_step(self, step_list, new_step):
-      for step in step_list:
+    def _contains_step(self, steps_frames, new_step):
+      for step in steps_frames:
         if new_step[0] == step[0] and new_step[1] == step[1]:
           return True
       return False
-
+    
     def _construct_loader(self, split):
-        self.annotations = pd.read_csv(self.annotations_file,usecols=['video_id','start_frame','stop_frame','narration','verb_class'])
+        #frame_step_counter = {i:0 for i in range(8)}
+        self.annotations = pd.read_csv(self.annotations_file, usecols=['video_id','start_frame','stop_frame','narration','verb_class'])
+
+        if self.data_filter is not None:
+           self.annotations = self.annotations[ self.annotations["video_id"].isin(self.data_filter) ]
+
         self.datapoints = {}
         ipoint = 0
         video_ids = sorted(list(set(self.annotations.video_id)))
+
         for v in tqdm.tqdm(video_ids, total=len(video_ids), desc = "Videos"):
             # get video annotations
             vid_ann = self.annotations[self.annotations.video_id==v]
-            start_frames = vid_ann.start_frame[1:].to_numpy()
-            stop_frames = vid_ann.stop_frame[:-1].to_numpy()
+            vid_ann = self._remove_complete_overlap(vid_ann.copy())
             #=================================== v3 ===================================
             nframes = 0
-            start_frame = 60  #TODO: OMNIVORE STARTS HERE
+            start_frame = 30  #TODO: OMNIVORE STARTS ON 30 (window = 1), 60 (window = 2), or 120 (window = 4). SO __getitem__ CANNOT LOAD FEATURES BEFORE IT
             stop_frame  = start_frame + self.video_fps * self.slide_win_size
 
             if self.image_augs:
@@ -445,22 +460,60 @@ class Milly_multifeature_v3(Milly_multifeature):
             win_idx = 0
 
             while stop_frame <= nframes:
-              steps_ = []
+              steps_frames = []
 
-              for _, step in vid_ann.iterrows():
-                  new_step = ( int(start_frame), int(stop_frame), step.verb_class)
-                  if stop_frame >= step.start_frame and stop_frame <= step.stop_frame and not self._contains_step(steps_, new_step):
-                    steps_.append(new_step)
+              for _, step_ann in vid_ann.iterrows():
+                new_step = (int(start_frame), int(stop_frame), step_ann.verb_class)
 
-              if len(steps_) == 0:
-                steps_.append((int(start_frame), int(stop_frame), self.default_steps["no_step"]))
+                if step_ann.start_frame <= stop_frame and stop_frame <= step_ann.stop_frame:
+                  steps_frames.append(new_step)
 
-              self.datapoints[ipoint] = {
-                'video_id': v,
-                'window_id': win_idx,                
-                'steps_frames': steps_
-              }
-              ipoint += 1                 
+              if len(steps_frames) == 0:
+                steps_frames.append((int(start_frame), int(stop_frame), self.default_steps["no_step"]))
+
+              for sf in steps_frames:
+                self.datapoints[ipoint] = {
+                  'video_id': v,
+                  'window_id': win_idx,                
+                  'steps_frames': [sf]
+                }
+                ipoint += 1                 
+
               win_idx += 1
               start_frame += self.slide_hop_size * self.video_fps
               stop_frame  += self.slide_hop_size * self.video_fps
+
+    ##If a step S2 is completly inside a step S1, removes from S1 the frames overlaped with S2  
+    ##So there are S1_p1  S2 S1_p2 and no overlap between S1 and S2
+    def _remove_complete_overlap(self, vid_ann):
+      aux_list = []
+      vid_ann["split"] = vid_ann["verb_class"]
+
+      for _, step_ann in vid_ann.iterrows():
+        if len(aux_list) == 0:
+          aux_list.append(step_ann)
+        else:
+          processed = False
+
+          for i, prev in enumerate(aux_list.copy()):
+            if prev.start_frame <= step_ann.start_frame and step_ann.stop_frame <= prev.stop_frame:
+              processed = True
+              p1 = prev.copy()
+              p2 = prev.copy()
+
+              del aux_list[i]
+
+              p1.stop_frame  = step_ann.start_frame
+              p1.split = str(p1.split) + "_p1"
+
+              p2.start_frame = step_ann.stop_frame
+              p2.split = str(p2.split) + "_p2"
+
+              aux_list.append(p1)
+              aux_list.append(step_ann)
+              aux_list.append(p2)
+
+          if not processed:
+            aux_list.append(step_ann)
+
+      return pd.DataFrame(aux_list)            

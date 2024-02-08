@@ -55,6 +55,7 @@ fi
 echo "|-- Create SquashFS for $NAME"
 
 TMP=$OUTPUT_PATH/tmp_$NAME
+FOLDERS_MOVE=$OUTPUT_PATH/$NAME"_*/"
 
 sbatch <<EOSBATCH
 #!/bin/bash
@@ -82,7 +83,7 @@ echo "Create SquashFS for $NAME"
 TMP=$OUTPUT_PATH/tmp_$NAME
 
 mkdir -p $TMP/$squash_root
-mv $OUTPUT_PATH/$NAME* $TMP/$squash_root
+mv $FOLDERS_MOVE $TMP/$squash_root
 
 find $TMP/$squash_root -type d -exec chmod 755 {} \;
 find $TMP/$squash_root -type f -exec chmod 644 {} \;

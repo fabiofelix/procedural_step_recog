@@ -130,20 +130,37 @@ def train(train_loader, val_loader, cfg):
 
     # Instantiating the models
     model = build_model(cfg)
+    best_model = None
     
     # Defining loss function and optimizer
     criterion = nn.CrossEntropyLoss()
     criterion_t = nn.MSELoss()
+    scheduler = None
 
     if cfg.TRAIN.OPT == "adam":
-      optimizer = torch.optim.Adam(model.parameters(), lr=cfg.TRAIN.LR)
+      optimizer = torch.optim.Adam(model.parameters(), lr=cfg.TRAIN.LR, weight_decay = cfg.TRAIN.WEIGHT_DECAY)
     elif cfg.TRAIN.OPT == "sgd":
-      optimizer = torch.optim.SGD(model.parameters(), lr=cfg.TRAIN.LR, momentum = 0.9)
+      optimizer = torch.optim.SGD(model.parameters(), lr=cfg.TRAIN.LR, momentum = cfg.TRAIN.MOMENTUM, weight_decay = cfg.TRAIN.WEIGHT_DECAY)
     elif cfg.TRAIN.OPT == "rmsprop":
-      optimizer = torch.optim.RMSprop(model.parameters(), lr=cfg.TRAIN.LR)
+      optimizer = torch.optim.RMSprop(model.parameters(), lr=cfg.TRAIN.LR, weight_decay = cfg.TRAIN.WEIGHT_DECAY)
 
-    print("Training of step recognition for {}: model {} - optimizer {} - {} data".format(cfg.MODEL.SKILLS[0], model.__class__.__name__, optimizer.__class__.__name__, "aug" if cfg.DATASET.INCLUDE_IMAGE_AUGMENTATIONS else "raw" ))
+    if cfg.TRAIN.SCHEDULER == "step":
+      scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size = 5)
+    elif cfg.TRAIN.SCHEDULER == "exp":  
+      scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.99)
+
+    aug_data = "raw data"
+
+    if cfg.DATASET.INCLUDE_IMAGE_AUGMENTATIONS or cfg.DATASET.INCLUDE_TIME_AUGMENTATIONS:
+      aug_data = "aug "
+      if cfg.DATASET.INCLUDE_IMAGE_AUGMENTATIONS:
+        aug_data += "img "
+      if cfg.DATASET.INCLUDE_TIME_AUGMENTATIONS:
+        aug_data += "time"          
+
+    print("Training of step recognition for {}: model {} - optimizer {} - {} ".format(cfg.MODEL.SKILLS[0], model.__class__.__name__, optimizer.__class__.__name__, aug_data ))
     best_val_loss = float('inf')
+    best_val_acc = float('inf')
 
     history = {"train_loss":[], "train_class_loss":[], "train_pos_loss": [], "train_acc":[], "train_b_acc":[], "train_grad_norm": [], "val_loss":[], "val_class_loss":[], "val_pos_loss": [], "val_acc":[], "val_b_acc":[], "val_grad_norm": [], "best_epoch": None}
     progress = tqdm.tqdm(total = len(train_loader), unit= "step", bar_format='{desc}|{bar:10}| {n_fmt}/{total_fmt} [{elapsed}<{remaining} - {rate_fmt}]{postfix}' )
@@ -172,13 +189,22 @@ def train(train_loader, val_loader, cfg):
                             "val Cross entropy": val_class_loss, "val MSE": val_pos_loss, "val Total loss": val_loss, "val acc": val_acc})
       print("")
 
+      if scheduler is not None:
+        scheduler.step()
+        print("Learning rate: ", scheduler.get_last_lr())
+
       if val_loss < best_val_loss:
         history["best_epoch"] = epoch
         best_val_loss = val_loss
+        best_val_acc = val_acc
         torch.save(model.state_dict(), os.path.join(cfg.OUTPUT.LOCATION, 'step_gru_best_model.pt'))
 
     plot_history(history, cfg)        
-    return model
+
+    if cfg.TRAIN.RETURN_METRICS:
+      return os.path.join(cfg.OUTPUT.LOCATION, 'step_gru_best_model.pt'), best_val_loss, best_val_acc
+    else:
+      return os.path.join(cfg.OUTPUT.LOCATION, 'step_gru_best_model.pt')
 
 def evaluate(model, data_loader, cfg, aggregate_avg = False):
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
