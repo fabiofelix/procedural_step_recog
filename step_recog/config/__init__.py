@@ -18,7 +18,7 @@ def load_config(cfg=None, args=None):
     if isinstance(cfg, CfgNode):
         return cfg
 
-    from act_recog.config.defaults import get_cfg
+    from step_recog.config.defaults import get_cfg
     # Setup cfg.
     C = get_cfg()
     # Load config from cfg.
@@ -30,5 +30,8 @@ def load_config(cfg=None, args=None):
     if args is not None:
         if args.opts is not None:
             C.merge_from_list(args.opts)
+
+    if C.SKILLS:
+        C.MODEL.OUTPUT_DIM = sum(len(c['STEPS']) for c in C.SKILLS) + 2
 
     return C

@@ -1,0 +1,14 @@
+_BASE_: STEPGRU_BASE.yaml
+MODEL:
+  OMNIGRU_CHECKPOINT_URL: 
+
+SKILLS:
+  - NAME: M5 - X-Stat
+    STEPS:
+    - Open inner packaging and remove applicator.
+    - Insert applicator into wound track as close to bleeding source as possible.
+    - Insert plunger into applicator.
+    - Push plunger firmly to deploy sponges into wound.
+    - Completely fill wound track with sponges.
+    - Cover wound site with pressure dressing.
+    - Apply manual pressure if necessary.

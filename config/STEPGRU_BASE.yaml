@@ -1,0 +1,35 @@
+MODEL:
+  HIDDEN_SIZE: 1024
+  CONTEXT_LENGTH: 'full'
+  USE_ACTION: True   ##default true
+  USE_OBJECTS: True   ##default true
+  USE_AUDIO: False    ##default false
+  USE_BN: False      ##default false
+  #  CHECKPOINT_FILE_PATH: "/home/user/procedural_step_recog/models/STEPGRU_tourniquet.pt"
+  #  CHECKPOINT_FILE_PATH: "/home/user/data/BBN/new/M1/feature/omnimix/step_gru_best_model.pt"
+  APPEND_OUT_POSITIONS: 3
+
+  
+  YOLO_CHECKPOINT_URL: /Users/bea/Downloads/M2_M3_M5_R18_v9_2.pt
+DATASET:
+  NAME: 'Milly'
+  LOCATION: '/omnivore'
+  AUDIO_LOCATION: ''
+  OBJECT_FRAME_LOCATION: '/obj_frame'
+  VIDEO_LAYER: 'shoulders'
+  INCLUDE_IMAGE_AUGMENTATIONS: True
+  INCLUDE_TIME_AUGMENTATIONS: False
+  FPS: 30
+  HOP_SIZE: 0.5 # in seconds
+  WIN_LENGTH: 2  #in seconds
+DATALOADER:
+  NUM_WORKERS: 8
+  PIN_MEMORY: True
+TRAIN:
+  ENABLE: True
+  NUM_GPUS: 1
+  BATCH_SIZE: 32
+  OPT: "rmsprop"  #adam sgd rmsprop
+  LR: 0.001
+  EPOCHS: 15
+

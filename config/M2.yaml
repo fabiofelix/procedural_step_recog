@@ -1,0 +1,16 @@
+_BASE_: STEPGRU_BASE.yaml
+MODEL:
+  OMNIGRU_CHECKPOINT_URL: 
+
+SKILLS:
+  - NAME: M2 - Apply Tourniquet
+    STEPS:
+    - Place tourniquet with over  effected extremity 2-3 inches above wound site.
+    - Pull tourniquet tight.
+    - Cinch tourniquet strap.
+    - Apply strap to strap body.
+    - Turn windless clock wise or counter clockwise until hemorrhage is controlled.
+    - Lock windless into the windless keeper.
+    - Pull remaining strap over the windless keeper.
+    - Secure strap and windless keeper with keeper securing device.
+    - Mark time on securing device strap with permanent marker.

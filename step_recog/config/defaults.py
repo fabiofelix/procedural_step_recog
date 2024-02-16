@@ -43,6 +43,10 @@ _C.MODEL.USE_BN = False
 _C.MODEL.CHECKPOINT_FILE_PATH = ''
 _C.MODEL.APPEND_OUT_POSITIONS = 2
 
+_C.MODEL.YOLO_CHECKPOINT_URL = ''
+_C.MODEL.OMNIGRU_CHECKPOINT_URL = ''
+_C.MODEL.OMNIVORE_CONFIG = 'OMNIVORE'
+
 # -----------------------------------------------------------------------------
 # Dataset options
 # -----------------------------------------------------------------------------
@@ -60,6 +64,8 @@ _C.DATASET.FPS = 30
 _C.DATASET.WIN_LENGTH = 2
 _C.DATASET.INCLUDE_IMAGE_AUGMENTATIONS = True
 _C.DATASET.INCLUDE_TIME_AUGMENTATIONS = False
+
+_C.SKILLS = []
 
 # -----------------------------------------------------------------------------
 # Dataloader options

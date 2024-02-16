@@ -1,0 +1,21 @@
+_BASE_: STEPGRU_BASE.yaml
+MODEL:
+  OMNIGRU_CHECKPOINT_URL: 
+
+SKILLS:
+  - NAME: M1 - Trauma Assessment
+    STEPS:
+    - Optionally unclothe depending on situation.
+    - Sweep* left leg.
+    - Sweep* right leg.
+    - Sweep* chest.
+    - Sweep* left arm.
+    - Sweep* right arm.
+    - Look Listen Feel Breathing.
+    - Rake** chest."
+    - Roll over casualty.
+    - Rake the back and buttocks.
+    - Check pulse.
+    - Check skin temperature / quality.
+    - Determine position to leave casualty.
+    - Optionally reclothe depending on situation.

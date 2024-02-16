@@ -18,48 +18,10 @@ from collections import OrderedDict
 mod_path = os.path.join(os.path.dirname(__file__), '..')
 sys.path.insert(0,  mod_path)
 
-from step_recog.config.defaults import get_cfg
-
-# from .omnivore import Omnivore
-# from .audio_slowfast import AudioSlowFast
-
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
-MODEL_DIR = os.getenv('MODEL_DIR') or 'models'
-# DEFAULT_CONFIG = os.path.join(mod_path, 'config/STEPGRU.yaml')
-# DEFAULT_CHECKPOINT = os.path.join(MODEL_DIR, 'model_best.pt')
-# DEFAULT_CHECKPOINT2 = os.path.join(MODEL_DIR, 'model_best_multimodal.pt')
-
-# if not os.path.isfile(DEFAULT_CHECKPOINT2):
-#     gdown.download(id="1ArZFX4LuuB4SbmmWSDit4S8gPhkc2DRq", output=DEFAULT_CHECKPOINT2)
-
-# MULTI_ID = "1ArZFX4LuuB4SbmmWSDit4S8gPhkc2DRq"
-# MULTI_CONFIG = os.path.join(mod_path, 'config/STEPGRU.yaml')
-CHECKPOINTS = {
-
-}
-
-CFG_FILES = glob.glob(os.path.join(mod_path, 'config/*.yaml'))
-for f in CFG_FILES:
-    cfg = yaml.safe_load(open(f))
-    if 'SKILLS' in cfg['MODEL']:
-      for skill in cfg['MODEL']['SKILLS']:
-          CHECKPOINTS[skill] = (cfg['MODEL']['DRIVE_ID'], f)
-#print(CHECKPOINTS)
-
 
 class OmniGRU(nn.Module):
     def __init__(self, cfg):
         super().__init__()
-        # self.cfg = cfg = get_cfg()
-        
-#        drive_id, cfg_file =  CHECKPOINTS[cfg.MODEL.SKILLS[0]]
-#        checkpoint = os.path.basename(cfg_file).split('.')[0]
-#        checkpoint = os.path.join(MODEL_DIR, f'{checkpoint}.pt')
-#        if not os.path.isfile(checkpoint):
-#            gdown.download(id=drive_id, output=checkpoint)
-
-        # cfg.merge_from_file(cfg_file)
         n_layers = 2
         drop_prob = 0.2
         action_size = 1024
@@ -103,7 +65,6 @@ class OmniGRU(nn.Module):
         self.gru = nn.GRU(gru_input_dim, hidden_dim, n_layers, batch_first=True, dropout=drop_prob)
         self.fc = nn.Linear(hidden_dim, output_dim + cfg.MODEL.APPEND_OUT_POSITIONS)  ## adding no step, begin, and end positions to the output
         self.relu = nn.ReLU()
-        #self.load_state_dict(torch.load(checkpoint))
 
     def forward(self, action, h=None, aud=None, objs=None, frame=None):
         x = action
