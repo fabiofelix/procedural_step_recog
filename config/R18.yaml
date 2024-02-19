@@ -1,15 +1,14 @@
 _BASE_: STEPGRU_BASE.yaml
 MODEL:
   OMNIGRU_CHECKPOINT_URL: 
+  OUTPUT_DIM: 5  
 
 SKILLS:
   - NAME: R18 - Apply chest seal
     STEPS:
-    - Identify gunshot wound or penetrating trauma to chest.
-    - With gloved hand, cover and seal wound site.
+    - With gloved hand, cover and seal wound site. 
     - Open vented chest seal package.
     - Wipe blood and body fluids from wound site.
     - Peel away chest seal backer.
     - Place chest seal with circle of vents over wound site and seal to chest.
-    - Look for exit wound, if found repeat process.
 

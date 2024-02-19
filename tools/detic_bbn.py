@@ -19,8 +19,10 @@ from torch import nn
 from ptgprocess.yolo import BBNYolo
 #from ptgprocess import box_util
 import clip
+from step_recog.full import ClipPatches
 
 import pathtrees as pt
+from PIL import Image
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -112,7 +114,7 @@ class Extractor:
         print("Using skill:", kw.get('skill'))
         #self.detic = Detic(vocab=['cat'], **kw)   # random vocab for faster init
         self.yolo = BBNYolo(**kw)
-        self.encoder = ClipPatches()
+        self.encoder = ClipPatches().to(device)
 
     def run(self, frame_dir):#, out_dir=DEFAULT_OUTPUT_DIR):
         # loop over participants
@@ -173,7 +175,7 @@ class Extractor:
         return out_fname
 
     def compute_store_clip_frame(self, im, out_fname):
-        output = self.encoder([im]).cpu()
+        output = self.encoder(im, include_frame = True).cpu()
         np.save(out_fname, output)
 
     def compute_store_clip_boxes(self, im, out_fname):
@@ -182,7 +184,7 @@ class Extractor:
         xyxyn, _, class_ids, labels, confs, _ = self.yolo.unpack_results(output)
         #xywh = output[0].cpu().numpy()
         #xywh = box_util.tlbr2tlwh(box_util.unnorm(xyxyn, im.shape))
-        features = self.encoder(extract_patches(im, xywh)).cpu().numpy() if len(xywh) else np.zeros((0, 512))
+        features = self.encoder(im, xywh).cpu()
         np.savez(out_fname,
             boxes=xyxyn,
             class_ids=class_ids,
@@ -199,78 +201,6 @@ class Extractor:
             confs=insts.scores.numpy(),
             box_confs=insts.box_scores.numpy(),
             clip_features=insts.clip_features.numpy())
-
-
-class ClipPatches(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.model, self.transform = clip.load("ViT-B/16", device=device, jit=False)
-    
-    def forward(self, patches):
-        X = torch.stack([
-            self.transform(Image.fromarray(x)).to(device)
-            for x in patches
-        ])
-        Z = self.model.encode_image(X)
-        return Z
-
-
-
-import numpy as np
-from PIL import Image
-
-def extract_image_patch(image, bbox, patch_shape=None):
-    """Extract image patch from bounding box.
-
-    Parameters
-    ----------
-    image : ndarray
-        The full image.
-    bbox : array_like
-        The bounding box in format (x, y, width, height).
-    patch_shape : Optional[array_like]
-        This parameter can be used to enforce a desired patch shape
-        (height, width). First, the `bbox` is adapted to the aspect ratio
-        of the patch shape, then it is clipped at the image boundaries.
-        If None, the shape is computed from :arg:`bbox`.
-    """
-    bbox = np.asarray(bbox)
-    if patch_shape is not None:
-        # correct aspect ratio to patch shape
-        target_aspect = float(patch_shape[1]) / patch_shape[0]
-        new_width = target_aspect * bbox[3]
-        bbox[0] -= (new_width - bbox[2]) / 2
-        bbox[2] = new_width
-
-    # convert to top left, bottom right
-    bbox[2:] += bbox[:2]
-    bbox = bbox.astype(int)
-
-    # clip at image boundaries
-    bbox[:2] = np.maximum(0, bbox[:2])
-    bbox[2:] = np.minimum(np.asarray(image.shape[:2][::-1]) - 1, bbox[2:])
-    if np.any(bbox[:2] >= bbox[2:]):
-        return None
-
-    # 
-    sx, sy, ex, ey = bbox
-    image = image[sy:ey, sx:ex]
-    return image
-
-
-def extract_patches(image, boxes, patch_shape=None):
-    patches = []
-    for box in boxes:
-        patch = extract_image_patch(image, box, patch_shape=patch_shape)
-        if patch is None:
-            print(f"WARNING: Failed to extract image patch: {box}.")
-            patch = np.random.randint(0, 255, (*patch_shape, 3) if patch_shape else image.shape, dtype=np.uint8)
-        patches.append(patch)
-    return patches
-
-
-
-
 
 if __name__ == '__main__':
     import fire

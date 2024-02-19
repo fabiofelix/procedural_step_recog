@@ -157,8 +157,8 @@ def uniform_crop(images, size, spatial_idx, boxes=None):
             `num boxes` x 4.
     """
     assert spatial_idx in [0, 1, 2]
-    height = images.shape[2]
-    width = images.shape[3]
+    height = images.shape[-2]
+    width = images.shape[-1]
 
     y_offset = int(math.ceil((height - size) / 2))
     x_offset = int(math.ceil((width - size) / 2))
@@ -174,7 +174,7 @@ def uniform_crop(images, size, spatial_idx, boxes=None):
         elif spatial_idx == 2:
             x_offset = width - size
     cropped = images[
-        :, :, y_offset : y_offset + size, x_offset : x_offset + size
+        ..., y_offset : y_offset + size, x_offset : x_offset + size
     ]
 
     cropped_boxes = (

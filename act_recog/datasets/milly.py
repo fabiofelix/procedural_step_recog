@@ -90,7 +90,7 @@ class Milly(torch.utils.data.Dataset):
                 stop_frame += self.model_hopsize*self.dataset_fps
                 irecord += 1
         
-
+    ##Similar to act_recog.models.video_model_builder.py:prepare_image
     def __getitem__(self, index):
         """
         Given the video index, return the list of frames and video

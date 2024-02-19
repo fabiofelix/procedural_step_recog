@@ -1,7 +1,7 @@
 import argparse
 import torch
 import sys
-from act_recog.config.defaults import get_cfg
+from act_recog.config import load_config
 from slide_net import slide
 
 def parse_args():
@@ -38,26 +38,6 @@ def parse_args():
     if len(sys.argv) == 1:
         parser.print_help()
     return parser.parse_args()
-
-
-def load_config(args):
-    """
-    Given the arguemnts, load and initialize the configs.
-    Args:
-        args (argument): arguments includes `shard_id`, `num_shards`,
-            `init_method`, `cfg_file`, and `opts`.
-    """
-    # Setup cfg.
-    cfg = get_cfg()
-    # Load config from cfg.
-    if args.cfg_file is not None:
-        cfg.merge_from_file(args.cfg_file)
-    # Load config from command line, overwrite config from opts.
-    if args.opts is not None:
-        cfg.merge_from_list(args.opts)
-
-    return cfg
-
 
 def main():
     """

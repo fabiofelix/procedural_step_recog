@@ -18,12 +18,12 @@ class ClipPatches(nn.Module):
 
     def stack_patches(self, patches):
         return torch.stack([
-            self.transform(Image.fromarray(x)).to(self._device.device)
+            self.transform(Image.fromarray(x)).to(self._device)
             for x in patches
         ])
     
-    def forward(self, image, xywh, patch_shape=None, include_frame=False):
-        patches = extract_patches(image, xywh, patch_shape)
+    def forward(self, image, xywh=None, patch_shape=None, include_frame=False):
+        patches = [] if xywh is None else extract_patches(image, xywh, patch_shape)
         if include_frame:
             patches.insert(0, image)
         if not patches: 

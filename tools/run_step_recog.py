@@ -3,7 +3,7 @@ import torch
 import sys
 import os
 from torch.utils.data import DataLoader
-from step_recog.config.defaults import get_cfg
+from step_recog.config import load_config
 from step_recog import train, evaluate, build_model
 from step_recog.datasets import Milly_multifeature_v3
 
@@ -41,26 +41,6 @@ def parse_args():
     if len(sys.argv) == 1:
         parser.print_help()
     return parser.parse_args()
-
-
-def load_config(args):
-    """
-    Given the arguemnts, load and initialize the configs.
-    Args:
-        args (argument): arguments includes `shard_id`, `num_shards`,
-            `init_method`, `cfg_file`, and `opts`.
-    """
-    # Setup cfg.
-    cfg = get_cfg()
-    # Load config from cfg.
-    if args.cfg_file is not None:
-        cfg.merge_from_file(args.cfg_file)
-    # Load config from command line, overwrite config from opts.
-    if args.opts is not None:
-        cfg.merge_from_list(args.opts)
-
-    return cfg
-
 
 def collate_fn(data):
     """

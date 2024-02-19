@@ -77,7 +77,11 @@ class Milly_multifeature(torch.utils.data.Dataset):
                     'steps_frames': steps_
                 }
             ipoint += 1
-
+    ###time_augs percentages of FPS = 30 
+    ###                     0.5*FPS   = 15, 
+    ###                     0.25*FPS  = 7.5 
+    ###                     0.125*FPS = 3.75
+    ###win_sizes in seconds
     def __getitem__(self, index, time_augs = [15,7.5,3.75], win_sizes = [4,2,1]):
       return self.do_getitem(index, time_augs if self.time_augs else [15], win_sizes if self.time_augs else [2])
 
@@ -90,7 +94,7 @@ class Milly_multifeature(torch.utils.data.Dataset):
         
         # buffer up filenames and labels
         taug = 0
-        frames = []        
+        frames = []
         labels = [self.default_steps["no_step"]]
         aux = [0.0 for i in range(self.append_out_positions)]
         aux[-2:] = [self.default_steps["no_step_t"]] * 2
@@ -230,7 +234,7 @@ class Milly_multifeature(torch.utils.data.Dataset):
         labels = np.array(labels[:-1])
         labels_t = np.array(labels_t[:-1])
         frame_idxs = np.array(frame_idxs)
-
+       
         return torch.from_numpy(omni_embeddings), torch.from_numpy(obj_embeddings), torch.from_numpy(frame_embeddings), torch.from_numpy(audio_emgeddings), torch.from_numpy(np.array(omni_embeddings.shape[0])), torch.from_numpy(labels), torch.from_numpy(labels_t), torch.from_numpy(frame_idxs), np.array([drecord['video_id']])
 
     def __len__(self):

@@ -11,6 +11,7 @@ MODEL:
 
   
   YOLO_CHECKPOINT_URL: /Users/bea/Downloads/M2_M3_M5_R18_v9_2.pt
+  OMNIVORE_CONFIG: '/home/user/data/config/OMNIVORE.yaml'
 DATASET:
   NAME: 'Milly'
   LOCATION: '/omnivore'

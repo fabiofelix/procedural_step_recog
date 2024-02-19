@@ -41,7 +41,7 @@ sbatch <<EOSBATCH
 #!/bin/bash
 #SBATCH -c 1
 #SBATCH --mem 4GB
-#SBATCH --time 24:00:00
+#SBATCH --time 12:00:00
 #SBATCH --job-name aug-$NAME
 #SBATCH --output logs/%J_$NAME.out
 #SBATCH --mail-type=BEGIN,END,ERROR

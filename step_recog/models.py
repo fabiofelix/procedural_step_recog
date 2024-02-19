@@ -19,8 +19,13 @@ mod_path = os.path.join(os.path.dirname(__file__), '..')
 sys.path.insert(0,  mod_path)
 
 
+def custom_weights(layer):
+  if isinstance(layer, nn.Linear):
+    nn.init.xavier_normal_(layer.weight)  
+    nn.init.zeros_(layer.bias)
+
 class OmniGRU(nn.Module):
-    def __init__(self, cfg):
+    def __init__(self, cfg, load = False):
         super().__init__()
         n_layers = 2
         drop_prob = 0.2
@@ -65,6 +70,11 @@ class OmniGRU(nn.Module):
         self.gru = nn.GRU(gru_input_dim, hidden_dim, n_layers, batch_first=True, dropout=drop_prob)
         self.fc = nn.Linear(hidden_dim, output_dim + cfg.MODEL.APPEND_OUT_POSITIONS)  ## adding no step, begin, and end positions to the output
         self.relu = nn.ReLU()
+
+        if load:
+          self.load_state_dict( self.update_version(torch.load( cfg.MODEL.CHECKPOINT_FILE_PATH )))
+        else:
+          self.apply(custom_weights)
 
     def forward(self, action, h=None, aud=None, objs=None, frame=None):
         x = action

@@ -86,7 +86,7 @@ JOBID=$(sbatch <<EOSBATCH
 #!/bin/bash
 #SBATCH -c 1
 #SBATCH --mem 8GB
-#SBATCH --time 24:00:00
+#SBATCH --time 8:00:00
 #SBATCH --gres gpu:1
 #SBATCH --job-name detic-$JOBNAME
 #SBATCH --output logs/%J_detic-$JOBNAME.out
