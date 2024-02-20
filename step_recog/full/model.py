@@ -55,7 +55,7 @@ class StepPredictor(nn.Module):
             raise NotImplementedError()
         
         # frame buffers and model state
-        self.omnivore_input_queue = deque(maxlen=32)
+        self.omnivore_input_queue = deque(maxlen=self.omni_cfg.DATASET.FPS * self.omni_cfg.MODEL.WIN_LENGTH)
         self.h = None  
 
     def reset(self):
@@ -64,9 +64,13 @@ class StepPredictor(nn.Module):
 
     def queue_frame(self, image):
       X_omnivore = self.omnivore.prepare_image(image)
-      self.omnivore_input_queue.append(X_omnivore)      
+      self.omnivore_input_queue.append(X_omnivore)
+
+    def has_omni_maxlen(self):
+      return len(self.omnivore_input_queue) == self.omnivore_input_queue.maxlen  
 
     def forward(self, image):
+#        pdb.set_trace()
         # compute yolo
         Z_objects = Z_frame = None
         if self.head.use_objects:
@@ -76,7 +80,7 @@ class StepPredictor(nn.Module):
 
             # concatenate with boxes and confidence
             Z_frame = torch.cat([Z_clip[:1], torch.tensor([[0, 0, 1, 1, 1]]).to(Z_clip.device)], dim=1)
-            Z_objects = torch.cat([Z_clip[1:], boxes.xyxyn, boxes.conf[:, None]], dim=1)  ##TODO: deticn_bbn.py:Extractor.compute_store_clip_boxes returns xyxyn
+            Z_objects = torch.cat([Z_clip[1:], boxes.xyxyn, boxes.conf[:, None]], dim=1)  ##deticn_bbn.py:Extractor.compute_store_clip_boxes returns xyxyn
             # pad boxes to size
             _pad = torch.zeros((max(self.MAX_OBJECTS - Z_objects.shape[0], 0), Z_objects.shape[1])).to(Z_objects.device)
             Z_objects = torch.cat([Z_objects, _pad])[:self.MAX_OBJECTS]
@@ -92,11 +96,12 @@ class StepPredictor(nn.Module):
         Z_action = None
         if self.head.use_action:
             # rolling buffer of omnivore input frames
-            X_omnivore = self.omnivore.prepare_image(image)
-            self.omnivore_input_queue.append(X_omnivore)
+            self.queue_frame(image)
 
             # compute omnivore embeddings
             X_omnivore = torch.stack(list(self.omnivore_input_queue), dim=1)[None]
+            frame_idx = np.linspace(0, self.omnivore_input_queue.maxlen - 1, self.omni_cfg.MODEL.NFRAMES).astype('long') #same as act_recog.dataset.milly.py:pack_frames_to_video_clip
+            X_omnivore = X_omnivore[:, :, frame_idx, :, :]
             _, Z_action = self.omnivore(X_omnivore.to(Z_objects.device), return_embedding=True)
             Z_action = Z_action[None]
 

@@ -20,6 +20,7 @@ from ptgprocess.yolo import BBNYolo
 #from ptgprocess import box_util
 import clip
 from step_recog.full import ClipPatches
+import pdb
 
 import pathtrees as pt
 from PIL import Image

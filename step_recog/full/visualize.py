@@ -26,9 +26,9 @@ def main(video_path, output_path='output.mp4', cfg_file=""):
 
     with sv.VideoSink(output_path, video_info=video_info) as sink:
         # iterate over video frames
-        for idx, frame in tqdm.tqdm(enumerate(sv.get_video_frames_generator(video_path))):            
-            if idx >= video_info.fps and idx % step_process == 0:
-              # take in a frame and make the next prediction
+        for idx, frame in tqdm.tqdm(enumerate(sv.get_video_frames_generator(video_path), -2)):
+            if model.has_omni_maxlen() and idx % step_process == 0:
+              # take in a queue frame and make the next prediction
               prob_step = model(frame).cpu().squeeze().numpy()
               step_idx  = np.argmax(prob_step)
               step_desc = "No step" if step_idx >= len(model.STEPS) else model.STEPS[step_idx]              
@@ -40,13 +40,14 @@ def main(video_path, output_path='output.mp4', cfg_file=""):
             sink.write_frame(frame)
 
 ##TODO: Review the offsets
-def plot_graph(frame, prob_step, step_desc, tl=(10, 25), scale=1.0, bar_space=10, text_color=(219, 219, 0), bar_clor=(197, 22, 22), thickness=1):
+##colors in BGR
+def plot_graph(frame, prob_step, step_desc, tl=(10, 25), scale=1.0, bar_space=10, text_color=(0, 219, 219), bar_clor=(22, 22, 197), thickness=1):
   width       = 30
   height      = 100
   start_point = (50, 50)
   border_color = (0, 0, 0)
   max_desc_length = 62
-  end_point   = (start_point[0] + width, start_point[1] + height)#    pdb.set_trace()
+  end_point   = (start_point[0] + width, start_point[1] + height)
 
   cv2.putText(frame, "Step: " + step_desc[:max_desc_length], (int(tl[0]), int(tl[1])), cv2.FONT_HERSHEY_COMPLEX, scale, border_color, thickness * 2) #black border
   cv2.putText(frame, "Step: " + step_desc[:max_desc_length], (int(tl[0]), int(tl[1])), cv2.FONT_HERSHEY_COMPLEX, scale, text_color, thickness)
