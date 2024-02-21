@@ -69,7 +69,7 @@ class StepPredictor(nn.Module):
     def has_omni_maxlen(self):
       return len(self.omnivore_input_queue) == self.omnivore_input_queue.maxlen  
 
-    def forward(self, image):
+    def forward(self, image, queue_omni_frame = True):
 #        pdb.set_trace()
         # compute yolo
         Z_objects = Z_frame = None
@@ -96,7 +96,8 @@ class StepPredictor(nn.Module):
         Z_action = None
         if self.head.use_action:
             # rolling buffer of omnivore input frames
-            self.queue_frame(image)
+            if queue_omni_frame:
+              self.queue_frame(image)
 
             # compute omnivore embeddings
             X_omnivore = torch.stack(list(self.omnivore_input_queue), dim=1)[None]

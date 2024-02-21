@@ -14,7 +14,7 @@ from torch.nn.init import constant_
 from torch.nn.init import normal_
 from torch.utils import model_zoo
 from copy import deepcopy
-
+import pdb
 
 from .build import MODEL_REGISTRY
 from act_recog.datasets.transform import uniform_crop
@@ -48,9 +48,8 @@ class Omnivore(nn.Module):
 ##Similar to act_recog.datasets.milly.py:__getitem__
 def prepare_image(im, mean, std, expected_size=224):
     '''[H, W, 3] => [3, 224, 224]'''
-#    scale = max(expected_size/im.shape[0], expected_size/im.shape[1])
     im = cv2.resize(im, (456, 256)) #TODO: review the code act_recog.datasets.milly.py: retry_load_images and __getitem__. There are two resizes
-    scale = expected_size/im.shape[1]
+    scale = max(expected_size/im.shape[0], expected_size/im.shape[1])
     im = cv2.resize(im, (0,0), fx=scale, fy=scale)
     im = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
     im = im.astype(float) / 255

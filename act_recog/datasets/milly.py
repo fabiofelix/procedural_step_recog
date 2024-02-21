@@ -60,7 +60,7 @@ class Milly(torch.utils.data.Dataset):
         self.dataset_name = cfg.DATASET.NAME
         self.dataset_fps = cfg.DATASET.FPS
         self.model_length = cfg.MODEL.WIN_LENGTH # seconds
-        self.model_hopsize = cfg.MODEL.HOP_SIZE # seconds
+        self.model_hopsize = cfg.MODEL.HOP_SIZE  # percentage
         self.model_nframes = cfg.MODEL.NFRAMES
         if self.dataset_name == 'Milly':
             self.get_milly_items()
