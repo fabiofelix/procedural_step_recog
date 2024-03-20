@@ -19,11 +19,34 @@ from collections import OrderedDict
 mod_path = os.path.join(os.path.dirname(__file__), '..')
 sys.path.insert(0,  mod_path)
 
+from step_recog.config.defaults import get_cfg
+from step_recog.resnet import ResNet
+from step_recog.full.download import cached_download_file
+from step_recog.full.clip_patches import ClipPatches 
+
+from act_recog.models import Omnivore
+from act_recog.config import load_config as act_load_config
+
+from ultralytics import YOLO
+
+from slowfast.utils.parser import load_config as slowfast_load_config
+from slowfast.models.audio_model_builder import SlowFast
+from slowfast.utils import checkpoint
+
+MAX_OBJECTS = 25
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
 
 def custom_weights(layer):
   if isinstance(layer, nn.Linear):
     nn.init.xavier_normal_(layer.weight)  
     nn.init.zeros_(layer.bias)
+
+def args_hook(cfg_file):
+  args = lambda: None
+  args.cfg_file = cfg_file
+  args.opts = None   
+  return args
 
 class OmniGRU(nn.Module):
     def __init__(self, cfg, load = False):
@@ -78,23 +101,21 @@ class OmniGRU(nn.Module):
           self.apply(custom_weights)
 
     def forward(self, action, h=None, aud=None, objs=None, frame=None):
-        x = action
+        x = []
 
         if self.use_action and (self.use_audio or self.use_objects):
             action = self.action_fc(action)
             if self.use_bn:
                 action = self.action_bn(action.transpose(1, 2)).transpose(1, 2)
             action = self.relu(action)
+            x.append(action)
 
         if self.use_audio:
             aud = self.audio_fc(aud)
             if self.use_bn:
                 aud = self.aud_bn(aud.transpose(1, 2)).transpose(1, 2)
             aud = self.relu(aud)
-            x = aud
-
-            if self.use_action:
-               x = torch.concat((action, aud), -1)
+            x.append(aud)
 
         if self.use_objects:
             obj_proj = self.relu(self.obj_proj(objs))
@@ -102,21 +123,18 @@ class OmniGRU(nn.Module):
 
             values = torch.softmax(torch.sum(frame_proj * obj_proj, dim=-1, keepdims=True), dim=-2)
             obj_in = torch.sum(obj_proj * values, dim=-2)
-            obj_in = self.relu(self.obj_fc(obj_in))
+            # obj_in = self.relu(self.obj_fc(obj_in))
+            # if self.use_bn:
+            #     obj_in = self.obj_bn(obj_in.transpose(1, 2)).transpose(1, 2)
+            obj_in = self.obj_fc(obj_in)
             if self.use_bn:
-                obj_in = self.obj_bn(obj_in.transpose(1, 2)).transpose(1, 2)            
-            x = obj_in
-            
-            if self.use_action:
-              if self.use_audio:
-                x = torch.concat((action, aud, obj_in), -1)
-              else:    
-                x = torch.concat((action, obj_in), -1)
-            elif self.use_audio:
-                x = torch.concat((aud, obj_in), -1)
+              obj_in = self.obj_bn(obj_in.transpose(1, 2)).transpose(1, 2)
+            obj_in = self.relu(obj_in)            
+            x.append(obj_in)
 
+        x = torch.concat(x, -1) if len(x) > 1 else x[0]            
         out, h = self.gru(x, h)
-        out = self.relu(out)
+        out = self.relu(out)        
         out = self.fc(out)
         return out, h
 

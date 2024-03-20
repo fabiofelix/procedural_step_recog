@@ -5,9 +5,12 @@
 
 import torch
 import torch.nn as nn
+import numpy as np
 
 import slowfast.utils.weight_init_helper as init_helper
 from slowfast.models.batchnorm_helper import get_norm
+from slowfast.datasets.audio_loader_epic import _log_specgram
+from slowfast.datasets.utils import pack_pathway_output
 
 from . import head_helper, resnet_helper, stem_helper
 from .build import MODEL_REGISTRY
@@ -132,6 +135,7 @@ class SlowFast(nn.Module):
         self.norm_module = get_norm(cfg)
         self.num_pathways = 2
         self._construct_network(cfg)
+        self.cfg = cfg
         init_helper.init_weights(
             self, cfg.MODEL.FC_INIT_STD, cfg.RESNET.ZERO_INIT_FINAL_BN
         )
@@ -346,6 +350,22 @@ class SlowFast(nn.Module):
                              and 's1_fuse.bn' not in n):
                     # shutdown running statistics update in frozen mode
                     m.eval()
+
+    def prepare(self, samples, device = "cuda"):
+      spectrogram = _log_specgram(self.cfg, samples,
+                                  window_size=self.cfg.AUDIO_DATA.WINDOW_LENGTH,
+                                  step_size=self.cfg.AUDIO_DATA.HOP_LENGTH
+                                  )     
+
+      num_timesteps_to_pad = self.cfg.AUDIO_DATA.NUM_FRAMES - spectrogram.shape[0]
+
+      if num_timesteps_to_pad > 0:
+        spectrogram = np.pad(spectrogram, ((0, num_timesteps_to_pad), (0, 0)), 'edge')
+
+      spectrogram = torch.tensor(spectrogram).unsqueeze(0).float()                             
+      spectrogram = pack_pathway_output(self.cfg, spectrogram)
+
+      return [ spec[None].to(device) for spec in spectrogram  ]
 
 
 @MODEL_REGISTRY.register()

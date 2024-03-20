@@ -2,16 +2,24 @@
 
 SOURCE_PATH=$1
 OUTPUT_PATH=$2
-extract="true"
+SKILL=$3
+VIDEO_DEFAULT_FRAME_RATE=30
+SLOW_FAST_AUDIO_DEFAULT_SAMPLE_RATE=24000
+extract="false"
+type="frame" ## frame sound
+
 
 echo "|- Processing " $SOURCE_PATH
 mkdir -p $OUTPUT_PATH
 
 for subdir in $SOURCE_PATH/*;
 do
+#break
+
   file=$subdir/*.mp4
   name=$(basename $subdir)
   squash_output=$OUTPUT_PATH/$name.sqf
+  squash_output_sound=$OUTPUT_PATH/$SKILL.sqf
   tmp=$OUTPUT_PATH/tmp_$name
   output=$tmp/frame/$name
 
@@ -27,16 +35,26 @@ do
         else  
           echo "|-- Extracting frames from " $file
 
-          mkdir -p $output
+          if [[ $type == "frame" ]]; then
+            mkdir -p $output
+          fi
 
           if [[ $extract == "true" ]]; then
-            ffmpeg -i $file -qscale:v 2 "$output/frame_%010d.jpg" 
+            if [[ $type == "frame" ]]; then
+#            ffmpeg -i $file -qscale:v 2 "$output/frame_%010d.jpg"
+              ffmpeg -i $file -filter:v fps=$VIDEO_DEFAULT_FRAME_RATE -qscale:v 2 "$output/frame_%010d.jpg" 
+            else
+              ffmpeg -i $file -vn -acodec pcm_s16le -ac 1 -ar $SLOW_FAST_AUDIO_DEFAULT_SAMPLE_RATE  $OUTPUT_PATH/$name.wav
+            fi
           else
             echo "|-- Creating SquashFS for $subdir"
-            find $tmp/frame -type d -exec chmod 755 {} \;
-            find $tmp/frame -type f -exec chmod 644 {} \;
-  
-            mksquashfs $tmp/frame $squash_output -keep-as-directory -noappend && rm -rv $tmp
+
+            if [[ $type == "frame" ]]; then
+              find $tmp/frame -type d -exec chmod 755 {} \;
+              find $tmp/frame -type f -exec chmod 644 {} \;
+
+              mksquashfs $tmp/frame $squash_output -keep-as-directory -noappend && rm -rv $tmp
+            fi
           fi
         fi  
       fi
@@ -47,3 +65,10 @@ do
     echo "|-- ERROR: There is no *mp4 file inside $subdir"
   fi
 done
+
+if [[ $extract != "true" && $type == "sound" ]]; then
+  find $OUTPUT_PATH -type d -exec chmod 755 {} \;
+  find $OUTPUT_PATH -type f -exec chmod 644 {} \; 
+
+  mksquashfs $OUTPUT_PATH $squash_output_sound -keep-as-directory -noappend  && rm $OUTPUT_PATH/*wav
+fi  

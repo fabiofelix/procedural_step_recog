@@ -33,14 +33,14 @@ MODEL:
 DATASET:
   NAME: 'Milly'
   LOCATION: '/omnivore'
-  AUDIO_LOCATION: ''
+  AUDIO_LOCATION: '/sound'
   OBJECT_FRAME_LOCATION: '/obj_frame'
   VIDEO_LAYER: 'shoulders'
   TR_ANNOTATIONS_FILE: "/homse/user/data/BBN/new/M1/labels/BBN-M1_train_90p.csv"
   VL_ANNOTATIONS_FILE: "/homse/user/data/BBN/new/M1/labels/BBN-M1_test_10p.csv"
   TS_ANNOTATIONS_FILE: "/homse/user/data/BBN/new/M1/labels/BBN-M1_test_10p.csv"
   INCLUDE_IMAGE_AUGMENTATIONS: True
-  INCLUDE_TIME_AUGMENTATIONS: False
+  INCLUDE_TIME_AUGMENTATIONS: True
   FPS: 30
   HOP_SIZE: 0.5 # in seconds
   WIN_LENGTH: 2  #in seconds
@@ -51,8 +51,8 @@ TRAIN:
   ENABLE: True
   NUM_GPUS: 1
   BATCH_SIZE: 32
-  OPT: "rmsprop"  #adam sgd rmsprop
+  OPT: "adam"  #adam sgd rmsprop
   LR: 0.001
-  EPOCHS: 15
+  EPOCHS: 25
 OUTPUT:
   LOCATION: '/homse/user/data/BBN/new/M1/feature/omnimix'  

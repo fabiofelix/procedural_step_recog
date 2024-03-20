@@ -40,18 +40,19 @@ class Omnivore(nn.Module):
             return y, shoulder
         return y
     
-    def prepare_image(self, im):
+    def prepare_image(self, im, bgr2rgb = True):
         # 1,C,H,W
-        im = prepare_image(im, self.cfg.MODEL.MEAN, self.cfg.MODEL.STD, self.cfg.MODEL.IN_SIZE)
+        im = prepare_image(im, self.cfg.MODEL.MEAN, self.cfg.MODEL.STD, self.cfg.MODEL.IN_SIZE, bgr2rgb)
         return im    
 
 ##Similar to act_recog.datasets.milly.py:__getitem__
-def prepare_image(im, mean, std, expected_size=224):
+def prepare_image(im, mean, std, expected_size=224, bgr2rgb = True):
     '''[H, W, 3] => [3, 224, 224]'''
-    im = cv2.resize(im, (456, 256)) #TODO: review the code act_recog.datasets.milly.py: retry_load_images and __getitem__. There are two resizes
+##    im = cv2.resize(im, (456, 256)) #TODO: review the code act_recog.datasets.milly.py: retry_load_images and __getitem__. There are two resizes
     scale = max(expected_size/im.shape[0], expected_size/im.shape[1])
     im = cv2.resize(im, (0,0), fx=scale, fy=scale)
-    im = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
+    if bgr2rgb:
+      im = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
     im = im.astype(float) / 255
     im = (im - np.asarray(mean)) / np.asarray(std)
     im = im.transpose(2, 0, 1)    

@@ -46,6 +46,7 @@ _C.MODEL.APPEND_OUT_POSITIONS = 2
 _C.MODEL.YOLO_CHECKPOINT_URL = ''
 _C.MODEL.OMNIGRU_CHECKPOINT_URL = ''
 _C.MODEL.OMNIVORE_CONFIG = 'OMNIVORE'
+_C.MODEL.SLOWFAST_CONFIG = 'SLOWFAST'
 
 # -----------------------------------------------------------------------------
 # Dataset options

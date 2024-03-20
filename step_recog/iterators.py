@@ -61,9 +61,9 @@ def build_model(cfg):
   model  = OmniGRU(cfg)
   model.to(device)
 
-  return model  
+  return model, device  
 
-def train_step(epoch, model, criterion, criterion_t, optimizer, loader, is_training, device, cfg, progress):
+def train_step(epoch, model, criterion, criterion_t, optimizer, loader, is_training, device, cfg, progress, flatten_out = True):
   if is_training:
     model.train()
     h = model.init_hidden(cfg.TRAIN.BATCH_SIZE)
@@ -77,7 +77,9 @@ def train_step(epoch, model, criterion, criterion_t, optimizer, loader, is_train
   sum_acc = 0.
   number_classes = cfg.MODEL.OUTPUT_DIM if cfg.MODEL.APPEND_OUT_POSITIONS == 2 else cfg.MODEL.OUTPUT_DIM + 1
 
-  for counter, (action, obj, frame, audio, label, label_t, mask, _, _) in enumerate(loader, 1):
+#  pdb.set_trace()
+
+  for counter, (action, obj, frame, audio, label, label_t, mask, frame_idx, video_id) in enumerate(loader, 1):
     label = nn.functional.one_hot(label, number_classes)
 
     if not is_training:
@@ -88,18 +90,39 @@ def train_step(epoch, model, criterion, criterion_t, optimizer, loader, is_train
 
     out, h = model(action.to(device).float(), h, audio.to(device).float(), obj.to(device).float(), frame.to(device).float())
 
-    out_t   = torch.softmax(out[..., number_classes:], dim = -1)  #regression of time positions. Limits the results to [0, 1] range
-    out     = out[..., :number_classes]                           #classification of steps. CrossEntropyLoss consumes logits    
-    out     = torch.flatten(out, start_dim = 0, end_dim = 1)
-    out_t   = torch.flatten(out_t, start_dim = 0, end_dim = 1)
-    label   = torch.flatten(label, start_dim = 0, end_dim = 1)
-    label_t = torch.flatten(label_t.to(device), start_dim = 0, end_dim = 1)  
-    out_masked = out.to(device).float()
-    label_masked = label.to(device).float()
+    if not is_training:
+      out = out.detach().to("cpu")
+
+    mask    = mask.to(out.device)  
+    label   = label.to(out.device)
+    label_t = label_t.to(out.device)
+
+    if flatten_out:
+      out_t   = torch.softmax(out[..., number_classes:], dim = -1)  #regression of time positions. Limits the results to [0, 1] range
+      out     = out[..., :number_classes]                           #classification of steps. CrossEntropyLoss consumes logits    
+
+      out     = torch.flatten(out, start_dim = 0, end_dim = 1)
+      out_t   = torch.flatten(out_t, start_dim = 0, end_dim = 1)
+      label   = torch.flatten(label, start_dim = 0, end_dim = 1)
+      label_t = torch.flatten(label_t, start_dim = 0, end_dim = 1)  
+
+      out_masked = out.float()
+      label_masked = label.float()
+    else:  
+      out_t  = torch.softmax(out[..., None, number_classes:], dim = -1)  #regression of time positions. Limits the results to [0, 1] range
+      out    = out[..., None, :number_classes]                           #classification of steps. CrossEntropyLoss consumes logits    
+
+      out_masked   = out * mask
+      label_masked = mask * label.float()      
 
     class_loss = criterion(out_masked, label_masked)
-    pos_loss   = criterion_t(out_t.to(device).float(), label_t.to(device).float())    
-    loss       = class_loss + pos_loss
+
+    if flatten_out:
+      pos_loss = criterion_t(out_t.float(), label_t.float())    
+    else:  
+      pos_loss = criterion_t(out_t.float() * mask, mask * label_t.float())
+
+    loss = class_loss + pos_loss
 
     if is_training:
       loss.backward()
@@ -111,6 +134,7 @@ def train_step(epoch, model, criterion, criterion_t, optimizer, loader, is_train
 
     out_masked   = torch.argmax(out_masked, axis = -1)
     label_masked = torch.argmax(label_masked, axis = -1)
+
     sum_b_acc   += my_balanced_accuracy_score(label_masked.cpu().numpy(), out_masked.cpu().numpy())    
     sum_acc     += accuracy_score(label_masked.cpu().numpy(), out_masked.cpu().numpy())
 
@@ -123,14 +147,12 @@ def train_step(epoch, model, criterion, criterion_t, optimizer, loader, is_train
 
   grad_norm = np.sqrt(np.sum([torch.norm(p.grad).cpu().item()**2 for p in model.parameters() if p.grad is not None ]))
 
-  return sum_loss/counter, sum_class_loss/counter, sum_pos_loss/counter, sum_b_acc/counter, sum_acc/counter, grad_norm
+  return sum_loss/counter, sum_class_loss/counter, sum_pos_loss/counter, sum_b_acc/counter, sum_acc/counter, grad_norm  
 
 def train(train_loader, val_loader, cfg):
-    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-
     # Instantiating the models
-    model = build_model(cfg)
-    best_model = None
+    model, device = build_model(cfg)
+    best_model = os.path.join(cfg.OUTPUT.LOCATION, 'step_gru_best_model.pt')
     
     # Defining loss function and optimizer
     criterion = nn.CrossEntropyLoss()
@@ -148,15 +170,15 @@ def train(train_loader, val_loader, cfg):
       scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size = 5)
     elif cfg.TRAIN.SCHEDULER == "exp":  
       scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.99)
-
+    
     aug_data = "raw data"
 
     if cfg.DATASET.INCLUDE_IMAGE_AUGMENTATIONS or cfg.DATASET.INCLUDE_TIME_AUGMENTATIONS:
-      aug_data = "aug "
+      aug_data = "aug"
       if cfg.DATASET.INCLUDE_IMAGE_AUGMENTATIONS:
-        aug_data += "img "
+        aug_data += " img"
       if cfg.DATASET.INCLUDE_TIME_AUGMENTATIONS:
-        aug_data += "time"          
+        aug_data += " time"          
 
     print("Training of step recognition for {}: model {} - optimizer {} - {} ".format(cfg.MODEL.SKILLS[0], model.__class__.__name__, optimizer.__class__.__name__, aug_data ))
     best_val_loss = float('inf')
@@ -177,7 +199,9 @@ def train(train_loader, val_loader, cfg):
       history["train_b_acc"].append(train_b_acc)      
       history["train_grad_norm"].append(grad_norm)
 
-      val_loss, val_class_loss, val_pos_loss, val_b_acc, val_acc, grad_norm = train_step(epoch=epoch, model=model, criterion=criterion, criterion_t=criterion_t, optimizer=optimizer, loader=val_loader, is_training=False, device=device, cfg=cfg, progress=progress)
+      with torch.no_grad():
+        val_loss, val_class_loss, val_pos_loss, val_b_acc, val_acc, grad_norm = train_step(epoch=epoch, model=model, criterion=criterion, criterion_t=criterion_t, optimizer=optimizer, loader=val_loader, is_training=False, device=device, cfg=cfg, progress=progress)
+        
       history["val_loss"].append(val_loss)
       history["val_class_loss"].append(val_class_loss)
       history["val_pos_loss"].append(val_pos_loss)
@@ -197,15 +221,16 @@ def train(train_loader, val_loader, cfg):
         history["best_epoch"] = epoch
         best_val_loss = val_loss
         best_val_acc = val_acc
-        torch.save(model.state_dict(), os.path.join(cfg.OUTPUT.LOCATION, 'step_gru_best_model.pt'))
+        torch.save(model.state_dict(), best_model)
 
     plot_history(history, cfg)        
 
     if cfg.TRAIN.RETURN_METRICS:
-      return os.path.join(cfg.OUTPUT.LOCATION, 'step_gru_best_model.pt'), best_val_loss, best_val_acc
+      return best_model, best_val_loss, best_val_acc
     else:
-      return os.path.join(cfg.OUTPUT.LOCATION, 'step_gru_best_model.pt')
+      return best_model
 
+@torch.no_grad()
 def evaluate(model, data_loader, cfg, aggregate_avg = False):
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     model.eval()

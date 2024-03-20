@@ -4,9 +4,11 @@ from torch import nn
 from collections import deque
 from ultralytics import YOLO
 import pdb
+import cv2
 
 from act_recog.models import Omnivore
 from act_recog.config import load_config as act_load_config
+from act_recog.datasets.transform import uniform_crop
 
 from step_recog.config import load_config
 from step_recog.models import OmniGRU
@@ -63,11 +65,20 @@ class StepPredictor(nn.Module):
         self.h = None
 
     def queue_frame(self, image):
-      X_omnivore = self.omnivore.prepare_image(image)
+      X_omnivore = self.omnivore.prepare_image(image, bgr2rgb=False)
       self.omnivore_input_queue.append(X_omnivore)
 
     def has_omni_maxlen(self):
-      return len(self.omnivore_input_queue) == self.omnivore_input_queue.maxlen  
+      return len(self.omnivore_input_queue) == self.omnivore_input_queue.maxlen
+
+    def prepare(self, im):
+      expected_size=224
+      im    = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)        
+      scale = max(expected_size/im.shape[0], expected_size/im.shape[1])
+      im    = cv2.resize(im, (0,0), fx=scale, fy=scale)
+      im, _ = uniform_crop(im, expected_size, 1)
+
+      return im      
 
     def forward(self, image, queue_omni_frame = True):
 #        pdb.set_trace()

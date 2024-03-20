@@ -60,7 +60,8 @@ class GroupRandomColorAlter(RandomGroup):
             saturation_factor=None,
             sharpness_factor=None,
             posterize_factor=None,
-            solarize_factor=None, **kw):
+            solarize_factor=None,
+            verbose=True, **kw):
         super().__init__(**kw)
         self.brightness_factor = brightness_factor
         self.contrast_factor = contrast_factor
@@ -70,7 +71,8 @@ class GroupRandomColorAlter(RandomGroup):
         self.sharpness_factor = sharpness_factor
         self.posterize_factor = posterize_factor
         self.solarize_factor = solarize_factor
-        print({k: v.last for k, v in self.__dict__.items() if isinstance(v, randomwalk)})
+        if verbose:
+          print({k: v.last for k, v in self.__dict__.items() if isinstance(v, randomwalk)})
 
     def worker(self, im):
         if self.brightness_factor:
@@ -149,7 +151,7 @@ class Stack:
 
 
 def _aslist(x): return [x]
-def get_augmentation(input_size=600):
+def get_augmentation(input_size=600, verbose=True):
     import random
     import torchvision
     return torchvision.transforms.Compose([
@@ -167,6 +169,7 @@ def get_augmentation(input_size=600):
             sharpness_factor=randomwalk(0.5, 1.5, 0.05),
             # posterize_factor=randomwalk(5, 8, 0.3),
             # solarize_factor=randomwalk(0.7, 1, 0.05)
+            verbose=verbose
         ),
         Stack(),
     ])

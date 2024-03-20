@@ -19,7 +19,7 @@ def main(video_path, output_path='output.mp4', cfg_file=""):
     # create video reader and video writer
     video_info = sv.VideoInfo.from_video_path(video_path)
 
-    step_process = 15
+    step_process = 30
     prob_step = np.zeros(model.cfg.MODEL.OUTPUT_DIM + 1)
     prob_step[-1] = 1.0
     step_desc = "No step"
@@ -27,13 +27,15 @@ def main(video_path, output_path='output.mp4', cfg_file=""):
     with sv.VideoSink(output_path, video_info=video_info) as sink:
         # iterate over video frames
         for idx, frame in tqdm.tqdm(enumerate(sv.get_video_frames_generator(video_path))):
+            frame_aux = model.prepare(frame)
+
             if model.has_omni_maxlen() and idx % step_process == 0:
               # take in a queue frame and make the next prediction
-              prob_step = model(frame, queue_omni_frame = False).cpu().squeeze().numpy()
+              prob_step = model(frame_aux, queue_omni_frame = False).cpu().squeeze().numpy()
               step_idx  = np.argmax(prob_step)
               step_desc = "No step" if step_idx >= len(model.STEPS) else model.STEPS[step_idx]              
               
-            model.queue_frame(frame)  
+            model.queue_frame(frame_aux)  
 
             # draw the prediction (could be your bar chart) on the frame
             plot_graph(frame, prob_step, step_desc)
