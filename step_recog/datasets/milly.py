@@ -704,6 +704,7 @@ class Milly_multifeature_v4(Milly_multifeature):
 
   def _fill_gap(self, vid_ann, nframes):
     aux_list = []
+    prev = None
 
     for idx, step_ann in vid_ann.iterrows():
       p1 = step_ann.copy()
@@ -711,7 +712,7 @@ class Milly_multifeature_v4(Milly_multifeature):
       p1.verb_class = self.default_steps["no_step"]
       p1.split = self.default_steps["no_step"]
 
-      if (idx == 0 and step_ann.start_frame > 1) or (step_ann.start_frame - prev.stop_frame > 1):
+      if (idx == 0 and step_ann.start_frame > 1) or (prev is not None and step_ann.start_frame - prev.stop_frame > 1):
         p1.start_frame =  1 if idx == 0 else prev.stop_frame + 1
         p1.stop_frame = step_ann.start_frame - 1
 
@@ -734,6 +735,9 @@ class Milly_multifeature_v4(Milly_multifeature):
   def _construct_loader(self, split):
     self.annotations = pd.read_csv(self.annotations_file, usecols=['video_id','start_frame','stop_frame','narration','verb_class'])
 
+    #Some annotations on M3 have start_frame == 0
+    self.annotations["start_frame"] = self.annotations["start_frame"].clip(lower = 1)
+
     if self.data_filter is not None:
       self.annotations = self.annotations[ self.annotations["video_id"].isin(self.data_filter) ]
 
@@ -746,7 +750,7 @@ class Milly_multifeature_v4(Milly_multifeature):
 
     progress = tqdm.tqdm(video_ids, total=len(video_ids), desc = "Video")
 
-    for v in video_ids:      
+    for v in video_ids:     
       progress.update(1)
 
       vid_ann = self.annotations[self.annotations.video_id==v]
@@ -761,7 +765,7 @@ class Milly_multifeature_v4(Milly_multifeature):
         stop_frame  = min(start_frame + self.video_fps * win_size_sec[win_size] - 1, step_ann.stop_frame)
 
         start_sound_point = 0 if step_ann.start_frame == 1 else int(self.slowfast_cfg.AUDIO_DATA.SAMPLING_RATE * step_ann.start_frame / self.video_fps)
-#        stop_sound_point  = int(self.slowfast_cfg.AUDIO_DATA.SAMPLING_RATE * (win_size_sec[win_size] - 0.001)) #adjusted (-0.001) because of Slowfast set up        
+##        stop_sound_point  = int(self.slowfast_cfg.AUDIO_DATA.SAMPLING_RATE * (win_size_sec[win_size] - 0.001)) #adjusted (-0.001) because of Slowfast set up        
         stop_sound_point  = int(start_sound_point + self.slowfast_cfg.AUDIO_DATA.SAMPLING_RATE * (win_size_sec[win_size] - 0.001)) #adjusted (-0.001) because of Slowfast set up
 
         process_last_frames = stop_frame != step_ann.stop_frame
@@ -815,13 +819,23 @@ class Milly_multifeature_v4(Milly_multifeature):
 
         progress.set_postfix({"window total": len(self.datapoints)})                                                               
 
-  def augment_frames(self, frames, video_id):
-    if self.image_augs and self.rng.choice([True, False]):
-      if not video_id in self.augment_configs:  
-        self.augment_configs[video_id] = get_augmentation(None, verbose = False)
-      aug = self.augment_configs[video_id]
 
-      return [ aug(frame)[0].numpy() for frame in frames  ]
+  ##Apply the same augmentation to all windows in a video_id  
+  def augment_frames(self, frames, video_id):
+    if self.image_augs:
+      if video_id in self.augment_configs:
+        if self.augment_configs[video_id] is not None:
+          aug = self.augment_configs[video_id]
+
+          return [ aug(frame)[0].numpy() for frame in frames  ]
+      else:  
+        self.augment_configs[video_id] = None
+
+        if self.rng.choice([True, False]):
+          aug = get_augmentation(None, verbose = False)
+          self.augment_configs[video_id] = aug
+
+          return [ aug(frame)[0].numpy() for frame in frames  ]
 
     return frames
 

@@ -180,7 +180,7 @@ def train(train_loader, val_loader, cfg):
       if cfg.DATASET.INCLUDE_TIME_AUGMENTATIONS:
         aug_data += " time"          
 
-    print("Training of step recognition for {}: model {} - optimizer {} - {} ".format(cfg.MODEL.SKILLS[0], model.__class__.__name__, optimizer.__class__.__name__, aug_data ))
+    print("Training of step recognition for {}: model {} - optimizer {} - {} ".format(cfg.SKILLS[0]["NAME"], model.__class__.__name__, optimizer.__class__.__name__, aug_data ))
     best_val_loss = float('inf')
     best_val_acc = float('inf')
 

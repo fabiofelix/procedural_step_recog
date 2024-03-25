@@ -188,7 +188,7 @@ def main():
 
         print('Loading the best model to evaluate')
         model, _ = build_model(cfg)      
-        weights = torch.load(cfg.MODEL.CHECKPOINT_FILE_PATH if model_name is None else model_name)
+        weights = torch.load(cfg.MODEL.OMNIGRU_CHECKPOINT_URL if model_name is None else model_name)
         model.load_state_dict(model.update_version(weights))
 
         start_time = time.time()

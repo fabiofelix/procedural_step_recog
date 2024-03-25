@@ -96,7 +96,7 @@ class OmniGRU(nn.Module):
         self.relu = nn.ReLU()
 
         if load:
-          self.load_state_dict( self.update_version(torch.load( cfg.MODEL.CHECKPOINT_FILE_PATH )))
+          self.load_state_dict( self.update_version(torch.load( cfg.MODEL.OMNIGRU_CHECKPOINT_URL )))
         else:
           self.apply(custom_weights)
 
