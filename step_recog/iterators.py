@@ -4,13 +4,14 @@ from torch import nn
 import numpy as np
 import tqdm
 import os
-import pdb
+import pdb, ipdb
 import json
 import scipy
 from sklearn.metrics import confusion_matrix, classification_report, balanced_accuracy_score, accuracy_score
 from matplotlib import pyplot as plt
 import seaborn as sb, pandas as pd
 import warnings
+import glob
 
 def layer_summary(name, model):
   layer = model._modules.get(name)
@@ -63,7 +64,7 @@ def build_model(cfg):
 
   return model, device  
 
-def train_step(epoch, model, criterion, criterion_t, optimizer, loader, is_training, device, cfg, progress, flatten_out = True):
+def train_step(epoch, model, criterion, criterion_t, optimizer, loader, is_training, device, cfg, progress, flatten_out = False):
   if is_training:
     model.train()
     h = model.init_hidden(cfg.TRAIN.BATCH_SIZE)
@@ -77,8 +78,6 @@ def train_step(epoch, model, criterion, criterion_t, optimizer, loader, is_train
   sum_acc = 0.
   number_classes = cfg.MODEL.OUTPUT_DIM if cfg.MODEL.APPEND_OUT_POSITIONS == 2 else cfg.MODEL.OUTPUT_DIM + 1
 
-#  pdb.set_trace()
-
   for counter, (action, obj, frame, audio, label, label_t, mask, frame_idx, video_id) in enumerate(loader, 1):
     label = nn.functional.one_hot(label, number_classes)
 
@@ -88,7 +87,7 @@ def train_step(epoch, model, criterion, criterion_t, optimizer, loader, is_train
     h = torch.zeros_like(h)
     optimizer.zero_grad()
 
-    out, h = model(action.to(device).float(), h, audio.to(device).float(), obj.to(device).float(), frame.to(device).float())
+    out, h = model(action.to(device).float(), h, audio.to(device).float(), obj.to(device).float(), frame.to(device).float(), return_last_step = False)
 
     if not is_training:
       out = out.detach().to("cpu")
@@ -109,13 +108,19 @@ def train_step(epoch, model, criterion, criterion_t, optimizer, loader, is_train
       out_masked = out.float()
       label_masked = label.float()
     else:  
-      out_t  = torch.softmax(out[..., None, number_classes:], dim = -1)  #regression of time positions. Limits the results to [0, 1] range
-      out    = out[..., None, :number_classes]                           #classification of steps. CrossEntropyLoss consumes logits    
+      if len(out.shape) == 2:
+        out_t  = torch.softmax(out[..., None, number_classes:], dim = -1)  #regression of time positions. Limits the results to [0, 1] range
+        out    = out[..., None, :number_classes]                           #classification of steps. CrossEntropyLoss consumes logits    
+      else:  
+        out_t  = torch.softmax(out[..., number_classes:], dim = -1)  #regression of time positions. Limits the results to [0, 1] range
+        out    = out[..., :number_classes]                           #classification of steps. CrossEntropyLoss consumes logits          
 
       out_masked   = out * mask
       label_masked = mask * label.float()      
 
-    class_loss = criterion(out_masked, label_masked)
+##   https://pytorch.org/docs/stable/generated/torch.nn.CrossEntropyLoss.html
+##   https://discuss.pytorch.org/t/rnn-many-to-many-classification-with-cross-entropy-loss/106197
+    class_loss = criterion(out_masked.transpose(1, 2), label_masked.transpose(1, 2))
 
     if flatten_out:
       pos_loss = criterion_t(out_t.float(), label_t.float())    
@@ -132,11 +137,27 @@ def train_step(epoch, model, criterion, criterion_t, optimizer, loader, is_train
     sum_pos_loss   += pos_loss.item()
     sum_loss       += loss.item()
 
-    out_masked   = torch.argmax(out_masked, axis = -1)
+    out_masked   = torch.argmax(torch.softmax(out_masked, dim = -1), axis = -1)
     label_masked = torch.argmax(label_masked, axis = -1)
 
-    sum_b_acc   += my_balanced_accuracy_score(label_masked.cpu().numpy(), out_masked.cpu().numpy())    
-    sum_acc     += accuracy_score(label_masked.cpu().numpy(), out_masked.cpu().numpy())
+    if flatten_out:
+      sum_b_acc += my_balanced_accuracy_score(label_masked.cpu().numpy(), out_masked.cpu().numpy())    
+      sum_acc   += accuracy_score(label_masked.cpu().numpy(), out_masked.cpu().numpy())
+    else:  
+      mask         = torch.flatten(mask).cpu().numpy()  
+      label_masked = torch.flatten(label_masked).cpu().numpy()  
+      out_masked   = torch.flatten(out_masked).cpu().numpy()
+
+      label_masked_aux = []
+      out_masked_aux = []
+
+      for m, l, o in zip(mask, label_masked, out_masked):
+        if m > 0:
+          label_masked_aux.append(l)
+          out_masked_aux.append(o)
+
+      sum_b_acc += my_balanced_accuracy_score(np.array(label_masked_aux), np.array(out_masked_aux))    
+      sum_acc   += accuracy_score(np.array(label_masked_aux), np.array(out_masked_aux))      
 
     if is_training:
       progress.update(1)
@@ -149,11 +170,46 @@ def train_step(epoch, model, criterion, criterion_t, optimizer, loader, is_train
 
   return sum_loss/counter, sum_class_loss/counter, sum_pos_loss/counter, sum_b_acc/counter, sum_acc/counter, grad_norm  
 
+def load_current_state(cfg, model):
+  current_epoch = 0
+  history = {"train_loss":[], "train_class_loss":[], "train_pos_loss": [], "train_acc":[], "train_b_acc":[], "train_grad_norm": [], "val_loss":[], "val_class_loss":[], "val_pos_loss": [], "val_acc":[], "val_b_acc":[], "val_grad_norm": [], "best_epoch": None}  
+  current_model = glob.glob(os.path.join(cfg.OUTPUT.LOCATION, 'current_model_epoch*.pt'))
+
+  if len(current_model) > 0:
+    current_model.sort()
+    current_epoch = current_model[-1].split('current_model_epoch')
+    weights = torch.load(current_model[-1])
+    model.load_state_dict(model.update_version(weights))
+
+    current_model = current_model[-1].split('current_model_epoch')
+    current_model = current_model[-1].split('.')
+    current_epoch = int(current_model[0])
+
+    hist_file = os.path.join(cfg.OUTPUT.LOCATION, "history.json")
+
+    if os.path.isfile(hist_file):
+      hist_file = open(hist_file, "r")
+      history   = json.load(hist_file)
+
+  return model, current_epoch + 1, history
+
+def save_current_state(cfg, model, history, epoch): 
+  model_pattern = os.path.join(cfg.OUTPUT.LOCATION, 'current_model_epoch{:02d}.pt')  
+  torch.save(model.state_dict(), model_pattern.format(epoch))
+
+  hist_file = open(os.path.join(cfg.OUTPUT.LOCATION, "history.json"), "w")
+  hist_file.write(json.dumps(history))
+
+  previous_model = model_pattern.format(epoch - 1)
+
+  if epoch > 1 and os.path.isfile(previous_model):
+    os.remove(previous_model)
+
 def train(train_loader, val_loader, cfg):
     # Instantiating the models
     model, device = build_model(cfg)
     best_model = os.path.join(cfg.OUTPUT.LOCATION, 'step_gru_best_model.pt')
-    
+
     # Defining loss function and optimizer
     criterion = nn.CrossEntropyLoss()
     criterion_t = nn.MSELoss()
@@ -171,6 +227,15 @@ def train(train_loader, val_loader, cfg):
     elif cfg.TRAIN.SCHEDULER == "exp":  
       scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.99)
     
+    data_features = ""
+
+    if cfg.MODEL.USE_ACTION:
+      data_features = "action"
+    if cfg.MODEL.USE_OBJECTS:
+      data_features +=  "image" if data_features == "" else "+image"
+    if cfg.MODEL.USE_AUDIO:
+      data_features +=  "sound" if data_features == "" else "+sound"
+
     aug_data = "raw data"
 
     if cfg.DATASET.INCLUDE_IMAGE_AUGMENTATIONS or cfg.DATASET.INCLUDE_TIME_AUGMENTATIONS:
@@ -180,14 +245,14 @@ def train(train_loader, val_loader, cfg):
       if cfg.DATASET.INCLUDE_TIME_AUGMENTATIONS:
         aug_data += " time"          
 
-    print("Training of step recognition for {}: model {} - optimizer {} - {} ".format(cfg.SKILLS[0]["NAME"], model.__class__.__name__, optimizer.__class__.__name__, aug_data ))
+    print("Training of step recognition for {}: model {} - optimizer {} - features {} - {} ".format(cfg.SKILLS[0]["NAME"], model.__class__.__name__, optimizer.__class__.__name__, data_features, aug_data ))
     best_val_loss = float('inf')
     best_val_acc = float('inf')
 
-    history = {"train_loss":[], "train_class_loss":[], "train_pos_loss": [], "train_acc":[], "train_b_acc":[], "train_grad_norm": [], "val_loss":[], "val_class_loss":[], "val_pos_loss": [], "val_acc":[], "val_b_acc":[], "val_grad_norm": [], "best_epoch": None}
+    model, first_epoch, history = load_current_state(cfg, model)
     progress = tqdm.tqdm(total = len(train_loader), unit= "step", bar_format='{desc}|{bar:10}| {n_fmt}/{total_fmt} [{elapsed}<{remaining} - {rate_fmt}]{postfix}' )
 
-    for epoch in range(1, cfg.TRAIN.EPOCHS + 1):
+    for epoch in range(first_epoch, cfg.TRAIN.EPOCHS + 1):
       progress.set_description("Epoch {}/{} ".format(epoch, cfg.TRAIN.EPOCHS))
       progress.reset()
       
@@ -217,6 +282,8 @@ def train(train_loader, val_loader, cfg):
         scheduler.step()
         print("Learning rate: ", scheduler.get_last_lr())
 
+      save_current_state(cfg, model, history, epoch) 
+
       if val_loss < best_val_loss:
         history["best_epoch"] = epoch
         best_val_loss = val_loss
@@ -232,80 +299,45 @@ def train(train_loader, val_loader, cfg):
 
 @torch.no_grad()
 def evaluate(model, data_loader, cfg, aggregate_avg = False):
-    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-    model.eval()
+  number_classes = cfg.MODEL.OUTPUT_DIM if cfg.MODEL.APPEND_OUT_POSITIONS == 2 else cfg.MODEL.OUTPUT_DIM + 1
+  device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+  model.eval()  
 
-    outputs = []
-    targets = []
-    video_ids = []
-    frames = []
+  video_ids = []
+  frames  = []
+  outputs = []
+  targets = []
 
-    number_classes = cfg.MODEL.OUTPUT_DIM if cfg.MODEL.APPEND_OUT_POSITIONS == 2 else cfg.MODEL.OUTPUT_DIM + 1
-    summary = {}
+  for action, obj, frame, audio, label, _, _, frame_idx, videos in data_loader:
+    h = model.init_hidden(len(action))
 
-    for action, obj, frame, audio, label, _, mask, frame_idx, id in tqdm.tqdm(data_loader, total = len(data_loader), desc = "Evaluation steps"):
-      h = model.init_hidden(action.shape[0])
-      out, _ = model(action.to(device).float(), h, audio.to(device).float(), obj.to(device).float(), frame.to(device).float())
-      out_aux = out[..., :number_classes].cpu().detach().numpy()
+    out, _ = model(action.to(device).float(), h, audio.to(device).float(), obj.to(device).float(), frame.to(device).float(), return_last_step = False)
+    out    = torch.softmax(out[..., :number_classes], dim = -1).cpu().detach().numpy()
+    label  = label.cpu().numpy()
+    frame_idx = frame_idx.cpu().numpy()
 
-      ##the same frame_idx/video could be returned in different iterations.
-      ##accumulate this informations in a same structure
-      for video, frame, output, lb in zip(id, frame_idx, out_aux, label):        
-        video = video[0]
+    for video_id, video_frames, frame_target, frame_pred in zip(videos, frame_idx, label, out):
+      for frame, target, pred in zip(video_frames, frame_target, frame_pred):
+        if frame > 0:
+          video_ids.append(video_id[0])
+          frames.append(frame)
+          targets.append(target)
+          outputs.append(pred)
 
-        if not video in summary:
-          summary[video] = {"frame_idx": {}, "label": {}, "before_gru_space":{}, "after_gru_space": {} }
+  video_ids = np.array(video_ids)
+  frames  = np.array(frames)
+  targets = np.array(targets)          
+  outputs = np.array(outputs)
 
-        for f, o, l in zip(frame, output, lb):          
-          f = int(f)
+  classes = [ i for i in range(number_classes)]
+  classes_desc = [ "Step " + str(i + 1)  for i in range(number_classes)]
+  classes_desc[-1] = "No step"
+  save_evaluation(targets, np.argmax(outputs, axis = 1), classes, cfg, label_order = classes_desc)
 
-          if not f in summary[video]["frame_idx"]:
-            summary[video]["frame_idx"][f] = []
-            summary[video]["label"][f] = []
-
-          summary[video]["frame_idx"][f].append(o)  
-          summary[video]["label"][f].append(l.item())  
-
-
-    video_ids = []
-    frames = []
-    outputs = []
-    targets = []
-
-    #Aggregates information of summary
-    for v in summary:
-      for f in summary[v]["frame_idx"]:
-        video_ids.append(v)
-        frames.append(f)
-        probs = [ scipy.special.softmax(logit) for logit in summary[v]["frame_idx"][f] ]
-        #maximum confidence of each row (window)
-        out_aux = np.max(probs, axis = 1) 
-        #index of the row (window) with maximum confidence
-        out_aux = np.argmax(out_aux)
-        #returns only the row with the maximum
-        out_aux = summary[v]["frame_idx"][f][out_aux]
-
-        if aggregate_avg:
-          out_aux = np.mean(summary[v]["frame_idx"][f], axis = 0)
-
-        outputs.append(out_aux)  
-        possible_label, counts = np.unique(summary[v]["label"][f], return_counts=True)
-        targets.append(possible_label[np.argmax(counts)])
-
-    video_ids = np.array(video_ids)
-    frames  = np.array(frames)
-    outputs = np.array(outputs)
-    targets = np.array(targets)
-
-    classes = [ i for i in range(number_classes)]
-    classes_desc = [ "Step " + str(i + 1)  for i in range(number_classes)]
-    classes_desc[-1] = "No step"
-    save_evaluation(targets, np.argmax(outputs, axis = 1), classes, cfg, label_order = classes_desc)
-
-    np.save(f'{cfg.OUTPUT.LOCATION}/video_ids.npy', video_ids)
-    np.save(f'{cfg.OUTPUT.LOCATION}/frames.npy', frames)
-    np.save(f'{cfg.OUTPUT.LOCATION}/outputs.npy', outputs)
-    np.save(f'{cfg.OUTPUT.LOCATION}/targets.npy', targets)
+  np.save(f'{cfg.OUTPUT.LOCATION}/video_ids.npy', video_ids)
+  np.save(f'{cfg.OUTPUT.LOCATION}/frames.npy', frames)
+  np.save(f'{cfg.OUTPUT.LOCATION}/outputs.npy', outputs)
+  np.save(f'{cfg.OUTPUT.LOCATION}/targets.npy', targets)  
 
 def plot_history(history, cfg):
   hist_file = open(os.path.join(cfg.OUTPUT.LOCATION, "history.json"), "w")
@@ -404,5 +436,5 @@ def my_balanced_accuracy_score(y_true, y_pred, *, sample_weight=None, adjusted=F
         chance = 1 / n_classes
         score -= chance
         score /= 1 - chance
-    return score
+    return score  
 

@@ -525,6 +525,7 @@ class Milly_multifeature_v3(Milly_multifeature):
       return pd.DataFrame(aux_list)            
 
 import sys
+from collections import deque
 
 #to work with: torch.multiprocessing.set_start_method('spawn')
 omni_path = os.path.join(os.path.expanduser("~"), ".cache/torch/hub/facebookresearch_omnivore_main")
@@ -586,6 +587,8 @@ class Milly_multifeature_v4(Milly_multifeature):
       self.omnivore = Omnivore(self.omni_cfg)
       self.omnivore.eval()
 
+    self.sound_cache = deque(maxlen=5)
+
     if self.cfg.MODEL.USE_AUDIO:
       self.slowfast = SlowFast(self.slowfast_cfg)
       checkpoint.load_test_checkpoint(self.slowfast_cfg, self.slowfast)
@@ -633,7 +636,8 @@ class Milly_multifeature_v4(Milly_multifeature):
             step_ann.stop_frame = prev.start_frame - 1
             step_ann.split = str(step_ann) + "_p1"
 
-            aux_list.append(step_ann)
+            if step_ann.start_frame <= step_ann.stop_frame:
+              aux_list.append(step_ann)
           ## prev      |----------------------|              => |----------|
           ## step_ann              |----------------------|  =>             |----------------------|
           elif prev.start_frame < step_ann.start_frame and step_ann.start_frame <= prev.stop_frame and prev.stop_frame <= step_ann.stop_frame:
@@ -645,7 +649,9 @@ class Milly_multifeature_v4(Milly_multifeature):
             p1.stop_frame  = step_ann.start_frame - 1
             p1.split = str(p1.split) + "_p1"    
 
-            aux_list.append(p1)
+            if p1.start_frame <= p1.stop_frame:
+              aux_list.append(p1)
+
             aux_list.append(step_ann)
           ## prev      |--------------------------|  => |---|               |------|
           ## step_ann       |-------------|          =>      |-------------|            
@@ -700,7 +706,7 @@ class Milly_multifeature_v4(Milly_multifeature):
     aux_list = pd.DataFrame(aux_list)
     aux_list.reset_index(drop=True, inplace=True)
 
-    return pd.DataFrame(aux_list)
+    return aux_list
 
   def _fill_gap(self, vid_ann, nframes):
     aux_list = []
@@ -722,6 +728,7 @@ class Milly_multifeature_v4(Milly_multifeature):
       prev = step_ann      
       
       if idx == vid_ann.shape[0] - 1 and step_ann.stop_frame < nframes:
+        p1 = p1.copy()
         p1.start_frame = step_ann.stop_frame + 1
         p1.stop_frame = nframes
 
@@ -730,12 +737,23 @@ class Milly_multifeature_v4(Milly_multifeature):
     aux_list = pd.DataFrame(aux_list)
     aux_list.reset_index(drop=True, inplace=True)
 
-    return pd.DataFrame(aux_list)
+    return aux_list
+
+  def _shuffle_steps(self, vid_ann, split):
+    if split == "train":
+       ##disconsider first and last indices
+      indices = [i for i in range(1, vid_ann.shape[0] - 1)]
+      self.rng.shuffle(indices)
+      indices = [0] + indices + [vid_ann.shape[0] - 1]
+
+      return vid_ann.iloc[indices].reset_index(drop = True)
+
+    return vid_ann  
 
   def _construct_loader(self, split):
     self.annotations = pd.read_csv(self.annotations_file, usecols=['video_id','start_frame','stop_frame','narration','verb_class'])
 
-    #Some annotations on M3 have start_frame == 0
+    #Some annotations have start_frame == 0. M3 for example
     self.annotations["start_frame"] = self.annotations["start_frame"].clip(lower = 1)
 
     if self.data_filter is not None:
@@ -743,10 +761,29 @@ class Milly_multifeature_v4(Milly_multifeature):
 
     self.datapoints = {}
     ipoint = 0
+    total_window = 0
     video_ids = sorted(list(set(self.annotations.video_id)))
+    pad = 0
+
+    if split == "train":
+      self.rng.shuffle(video_ids)
+
+      #Depending on BATCH_SIZE and the number of video_ids, the last batch could be lost if it doesn't have BATCH_SIZE videos
+      #Pad the end of video_ids to avoid lost any video in the dataloader (drop_last=True) or launch a training error (drop_last=False)
+      match_factor = int(len(video_ids) / self.cfg.TRAIN.BATCH_SIZE)
+      #head = video_ids[:self.cfg.TRAIN.BATCH_SIZE * match_factor]
+      tail = video_ids[self.cfg.TRAIN.BATCH_SIZE * match_factor:]
+      pad = self.cfg.TRAIN.BATCH_SIZE - len(tail)
+
+      if pad > 0:
+        video_ids.extend(video_ids[:pad])      
 
     win_size_sec  = [1, 2, 4] if self.time_augs else [2]
     hop_size_perc = [0.125, 0.25, 0.5] if self.time_augs else [0.5]
+    start_delta   = 5  #smallest step per skill M1: 2 frames; M2: 7 frames, M3: 9 frames, M5: 21 frames, R18: 5 frames
+
+#    video_ids = ['R18-5']    
+#    pdb.set_trace()  
 
     progress = tqdm.tqdm(video_ids, total=len(video_ids), desc = "Video")
 
@@ -757,67 +794,77 @@ class Milly_multifeature_v4(Milly_multifeature):
       vid_ann = self._remove_overlap(vid_ann.copy())
       nframes = len(glob.glob(os.path.join(self.data_path, v, "*.jpg")))
       vid_ann = self._fill_gap(vid_ann.copy(), nframes)
+      video_windows = []
 
       for _, step_ann in vid_ann.iterrows():
         win_size = self.rng.integers(len(win_size_sec))
-        hop_size = self.rng.integers(len(hop_size_perc))         
-        start_frame = step_ann.start_frame
-        stop_frame  = min(start_frame + self.video_fps * win_size_sec[win_size] - 1, step_ann.stop_frame)
+        hop_size = self.rng.integers(len(hop_size_perc))  
 
-        start_sound_point = 0 if step_ann.start_frame == 1 else int(self.slowfast_cfg.AUDIO_DATA.SAMPLING_RATE * step_ann.start_frame / self.video_fps)
-##        stop_sound_point  = int(self.slowfast_cfg.AUDIO_DATA.SAMPLING_RATE * (win_size_sec[win_size] - 0.001)) #adjusted (-0.001) because of Slowfast set up        
-        stop_sound_point  = int(start_sound_point + self.slowfast_cfg.AUDIO_DATA.SAMPLING_RATE * (win_size_sec[win_size] - 0.001)) #adjusted (-0.001) because of Slowfast set up
+        ##First window: starts in step_ann.start_frame - WINDOW SIZE and stops in step_ann.start_frame
+        ##Chooses a stop in [ step_ann.start_frame,  step_ann.start_frame + delta ]
+        ##start_frame < 0 is used to facilitate the process. Inside the loop it is always truncated to 1 and do_getitem pads the begining of the window.
+        stop_frame = step_ann.start_frame
+        high = min(step_ann.start_frame + start_delta, stop_frame + 1)
+        stop_frame = self.rng.integers(low = step_ann.start_frame, high = high)
+
+        start_frame = stop_frame - self.video_fps * win_size_sec[win_size] + 1
+
+        stop_sound_point  = 0 if step_ann.start_frame == 1 else int(self.slowfast_cfg.AUDIO_DATA.SAMPLING_RATE * step_ann.start_frame / self.video_fps)
+        start_sound_point = int(stop_sound_point - self.slowfast_cfg.AUDIO_DATA.SAMPLING_RATE * (win_size_sec[win_size] - 0.001)) #adjusted (-0.001) because of Slowfast set up
 
         process_last_frames = stop_frame != step_ann.stop_frame
-        pad_frames = None
-        steps_frames = []
+        win_idx  = 0
 
         while stop_frame <= step_ann.stop_frame:
-          #Shifts frame indices to start at position 0 
+          #Shifts frame indices to start at position 0 to facilitate the position calc 
           begin_step  = 0
           end_step    = step_ann.stop_frame - step_ann.start_frame
           window_pos  = stop_frame - step_ann.start_frame
 
           step_size   = max(1, end_step - begin_step)
           window_pos  = [ window_pos / step_size, (step_size - window_pos) / step_size ]
+          #---------------------------------------------------------------------------#
 
-          new_step = (start_frame, stop_frame, start_sound_point, stop_sound_point, step_ann.verb_class, window_pos, [step_ann.start_frame, step_ann.stop_frame], pad_frames)  
-          steps_frames.append(new_step)
+          win_idx += 1
+          video_windows.append({
+            'video_id': v,
+            'window_id': win_idx,
+            'start_frame': max(start_frame, 1),
+            'stop_frame': stop_frame,
+            'start_sound_point': max(start_sound_point, 0),
+            'stop_sound_point': stop_sound_point,
+            'label': step_ann.verb_class,
+            'label_pos': window_pos,
+            'step_limit': [step_ann.start_frame, step_ann.stop_frame],
+            'window_frame_size': int(self.video_fps * win_size_sec[win_size]),
+            'window_point_size': int(self.slowfast_cfg.AUDIO_DATA.SAMPLING_RATE * (win_size_sec[win_size] - 0.001)),
+          })
+
+          previous_stop_frame = stop_frame
 
           start_frame += int(self.video_fps * win_size_sec[win_size] * hop_size_perc[hop_size])
-          stop_frame   = start_frame - 1 + self.video_fps * win_size_sec[win_size]
+          stop_frame   = int(start_frame - 1 + self.video_fps * win_size_sec[win_size])
 
           start_sound_point += int(self.slowfast_cfg.AUDIO_DATA.SAMPLING_RATE * win_size_sec[win_size] * hop_size_perc[hop_size])
           stop_sound_point  = int(start_sound_point + self.slowfast_cfg.AUDIO_DATA.SAMPLING_RATE * (win_size_sec[win_size] - 0.001)) #adjusted (-0.001) because of Slowfast set up          
 
           #Don't loose any frame in the end of the video. 
-          #Pad frames in the getitem to fill the win_size
-          if start_frame < step_ann.stop_frame and step_ann.stop_frame < stop_frame and process_last_frames:
+          if previous_stop_frame < step_ann.stop_frame and start_frame < step_ann.stop_frame and step_ann.stop_frame < stop_frame and process_last_frames:
             process_last_frames = False
-            stop_frame = step_ann.stop_frame
-##            start_frame = max(stop_frame - self.video_fps * win_size_sec[win_size] + 1, 1)
-            pad_frames = self.video_fps * win_size_sec[win_size] - (stop_frame - start_frame + 1)
-            stop_sound_point = int(self.slowfast_cfg.AUDIO_DATA.SAMPLING_RATE * step_ann.stop_frame / self.video_fps)
 
-        win_idx  = 0
+            stop_frame  = int(step_ann.stop_frame)
+            start_frame = int(stop_frame - self.video_fps * win_size_sec[win_size] + 1)
 
-        for sf in steps_frames:
-          win_idx += 1
-          self.datapoints[ipoint] = {
-            'video_id': v,
-            'window_id': win_idx,                
-            'start_frame': sf[0],
-            'stop_frame': sf[1],
-            'start_sound_point': sf[2],
-            'stop_sound_point': sf[3],
-            'label': sf[4],
-            'label_pos': sf[5],
-            'step_limit': sf[6],
-            'pad_frames': sf[7]
-          }
-          ipoint += 1 
+            stop_sound_point  = int(self.slowfast_cfg.AUDIO_DATA.SAMPLING_RATE * step_ann.stop_frame / self.video_fps)
+            start_sound_point = int(stop_sound_point - self.slowfast_cfg.AUDIO_DATA.SAMPLING_RATE * (win_size_sec[win_size] - 0.001)) #adjusted (-0.001) because of Slowfast set up
 
-        progress.set_postfix({"window total": len(self.datapoints)})                                                               
+      self.datapoints[ipoint] = {
+        'video_id': v,
+        'windows': video_windows
+      }
+      ipoint += 1
+      total_window += len(video_windows)
+      progress.set_postfix({"window total": total_window, "padded videos": pad})
 
 
   ##Apply the same augmentation to all windows in a video_id  
@@ -848,9 +895,21 @@ class Milly_multifeature_v4(Milly_multifeature):
 
     return im
 
-  @torch.no_grad()
-  def do_getitem(self, index, time_augs, win_sizes):
-    window = self.datapoints[index]
+  def _get_sound_cache(self, video, path):
+    sound = None
+
+    for video_sound in self.sound_cache:
+      if video in video_sound.keys():
+        sound = video_sound[video]
+        break
+
+    if sound is None:
+      sound, _ = librosa.load(path, sr = self.slowfast_cfg.AUDIO_DATA.SAMPLING_RATE, mono = True)
+      self.sound_cache.append({video: sound})    
+
+    return sound
+
+  def _load_frames(self, window):
     window_frames = []
 
     #Load window frames
@@ -874,80 +933,105 @@ class Milly_multifeature_v4(Milly_multifeature):
     if len(window_frames) == 0:
       raise Exception("No frame found inside [{}/{}] in the range [{}, {}]".format(self.data_path, window["video_id"], window["start_frame"], window["stop_frame"]))    
 
-    window_frames = self.augment_frames(window_frames, window["video_id"])
-    frame_step_label = [ window["label"] ]
-    frame_position_label = [ window["label_pos"] ]
+    #Padding to fill the win_size (see _construct_loader) 
+    if len(window_frames) <  window['window_frame_size']:
+      pad_frame = window_frames[0] 
+      ## pad_frame = np.zeros(window_frames[0].shape, dtype = window_frames[0].dtype)
+      ## pad_frame = np.ones(window_frames[0].shape, dtype = window_frames[0].dtype)
 
-    #Loads frame features
-    obj_embeddings = [np.zeros((0, MAX_OBJECTS, OBJECT_FRAME_FEATURES))]
-    frame_embeddings = [np.zeros((0, 1, OBJECT_FRAME_FEATURES))]
+      window_frames = [pad_frame] * (window['window_frame_size'] - len(window_frames)) + window_frames
 
-    if self.cfg.MODEL.USE_OBJECTS: 
-      obj_embeddings = []
-      frame_embeddings = []
+    return window_frames
 
-      window_idx = np.array([-1])
-#      window_idx = np.linspace(0, len(window_frames) - 1, 3).astype('long')
-      window_frames_yolo = list( np.array(window_frames)[window_idx] )
-      window_frames_boxes =  self.yolo(window_frames_yolo, verbose=False)
+  def _extract_img_features(self, window_frames):
+    frame = window_frames[-1]
+    boxes = self.yolo(frame, verbose=False)
+    boxes = boxes[0].boxes
 
-      frame_step_label = [ window["label"] ] * len(window_frames_yolo)
-      frame_position_label = [ window["label_pos"] ] * len(window_frames_yolo) 
+    Z_clip = self.clip_patches(frame, boxes.xywh.cpu().numpy(), include_frame=True)
 
-      for frame, boxes in zip(window_frames_yolo, window_frames_boxes):
-#        boxes = boxes[0].boxes if isinstance(boxes, list) else boxes.boxes
-        boxes = boxes.boxes        
+    # concatenate with boxes and confidence
+    Z_frame = torch.cat([Z_clip[:1], torch.tensor([[0, 0, 1, 1, 1]]).to(Z_clip.device)], dim=1)
+    Z_objects = torch.cat([Z_clip[1:], boxes.xyxyn, boxes.conf[:, None]], dim=1)  ##deticn_bbn.py:Extractor.compute_store_clip_boxes returns xyxyn
+    # pad boxes to size
+    _pad = torch.zeros((max(MAX_OBJECTS - Z_objects.shape[0], 0), Z_objects.shape[1])).to(Z_objects.device)
+    Z_objects = torch.cat([Z_objects, _pad])[:MAX_OBJECTS]
 
-        Z_clip = self.clip_patches(frame, boxes.xywh.cpu().numpy(), include_frame=True)
+    torch.cuda.empty_cache()   
+    return Z_objects.detach().cpu().float(), Z_frame.detach().cpu().float(), Z_objects.device
 
-        # concatenate with boxes and confidence
-        Z_frame = torch.cat([Z_clip[:1], torch.tensor([[0, 0, 1, 1, 1]]).to(Z_clip.device)], dim=1)
-        Z_objects = torch.cat([Z_clip[1:], boxes.xyxyn, boxes.conf[:, None]], dim=1)  ##deticn_bbn.py:Extractor.compute_store_clip_boxes returns xyxyn
-        # pad boxes to size
-        _pad = torch.zeros((max(MAX_OBJECTS - Z_objects.shape[0], 0), Z_objects.shape[1])).to(Z_objects.device)
-        Z_objects = torch.cat([Z_objects, _pad])[:MAX_OBJECTS]
+  def _extract_act_features(self, device, window_frames):
+    frame_idx  = np.linspace(0, len(window_frames) - 1, self.omni_cfg.MODEL.NFRAMES).astype('long')
+    X_omnivore = [ self.omnivore.prepare_image(frame, bgr2rgb = False) for frame in  window_frames ]
+    X_omnivore = torch.stack(list(X_omnivore), dim=1)[None]
+    X_omnivore = X_omnivore[:, :, frame_idx, :, :]
+    _, Z_action = self.omnivore(X_omnivore.to(device), return_embedding=True)
 
-        device = Z_objects.device 
-        obj_embeddings.append(Z_objects.detach().cpu().float())
-        frame_embeddings.append(Z_frame.detach().cpu().float())
+    return Z_action.detach().cpu()[0]  
 
-        del Z_objects
-        del Z_frame
-        del boxes
-        torch.cuda.empty_cache()
-
-    #Loads action features
-    Z_action = torch.zeros((0, ACTION_FEATURES))
-
-    if self.cfg.MODEL.USE_ACTION:      
-      frame_idx = np.linspace(0, len(window_frames) - 1, self.omni_cfg.MODEL.NFRAMES).astype('long')
-      X_omnivore = [ self.omnivore.prepare_image(frame, bgr2rgb = False) for frame in  window_frames ]
-      X_omnivore = torch.stack(list(X_omnivore), dim=1)[None]
-      X_omnivore = X_omnivore[:, :, frame_idx, :, :]
-      _, Z_action = self.omnivore(X_omnivore.to(device), return_embedding=True)
-      Z_action = Z_action.detach().cpu()
-
+  def _extract_sound_features(self, device, window): 
     #Loads sound features
     wav_path = os.path.join(self.data_path_audio, window["video_id"] + ".wav")
     global SOUND_FEATURES_LIST
     SOUND_FEATURES_LIST = np.zeros((0, SOUND_FEATURES))
 
-    if self.cfg.MODEL.USE_AUDIO and os.path.isfile(wav_path):
-      sound, _ = librosa.load(wav_path, sr = self.slowfast_cfg.AUDIO_DATA.SAMPLING_RATE, mono = True)
-      sound = sound[window["start_sound_point"] : window["stop_sound_point"] ]
+    if os.path.isfile(wav_path):
+      sound = self._get_sound_cache(window["video_id"], wav_path)
+      stop_sound_point = window["stop_sound_point"] + 1 if window["start_sound_point"] == window["stop_sound_point"] else window["stop_sound_point"]
+      sound = sound[window["start_sound_point"] : stop_sound_point ]
+
+      #Padding to fill the win_size (see _construct_loader) 
+      if sound.shape[0] <  window['window_point_size']:
+        sound = np.concatenate((np.zeros(window['window_point_size'] - len(sound), dtype = sound.dtype), sound))
+
       spec = self.slowfast.prepare(sound, device)
       SOUND_FEATURES_LIST = []
       self.slowfast(spec)
 
-    #Adjust output type
-    obj_embeddings   = torch.stack(obj_embeddings)   #shape = (time_step, MAX_OBJECTS, OBJECT_FRAME_FEATURES)
-    frame_embeddings = torch.stack(frame_embeddings) #shape = (time_step,           1, OBJECT_FRAME_FEATURES)
-    audio_embeddings = torch.from_numpy(np.array(SOUND_FEATURES_LIST)) #shape = (                       1, SOUND_FEATURES)
-    ## Z_action                                      #shape = (                       1, ACTION_FEATURES)
+    return SOUND_FEATURES_LIST[0]
+         
+  @torch.no_grad()
+  def do_getitem(self, index, time_augs, win_sizes):
+    video = self.datapoints[index]
+    video_obj = []
+    video_frame = []
+    video_act = []
+    video_sound = []
+#    video_id = []
+    window_step_label = []
+    window_position_label = []
+    window_stop_frame = []
 
-    frame_step_label = torch.from_numpy(np.array(frame_step_label))           #shape = (time_step)
-    frame_position_label = torch.from_numpy(np.array(frame_position_label))   #shape = (time_step, 2)
-    frame_idx = torch.from_numpy(np.array([ window["stop_frame"]]))           #shape = (1)
-    video_id  = np.array([ window["video_id"]])                               #shape = (1)     
+    for window in video["windows"]:
+#      video_id.append(window["video_id"])
+      window_step_label.append(window["label"])
+      window_position_label.append(window["label_pos"])
+      window_stop_frame.append(window["stop_frame"])
 
-    return Z_action, obj_embeddings, frame_embeddings, audio_embeddings, torch.from_numpy(np.array(frame_embeddings.shape[0])), frame_step_label, frame_position_label, frame_idx, video_id
+      window_frames = self._load_frames(window)
+      window_frames = self.augment_frames(window_frames, window["video_id"])
+
+      if self.cfg.MODEL.USE_OBJECTS: 
+        obj_embeddings, frame_embeddings, device = self._extract_img_features(window_frames)
+        video_obj.append(obj_embeddings)
+        video_frame.append(frame_embeddings)
+
+      if self.cfg.MODEL.USE_ACTION:      
+        action_embeddings = self._extract_act_features(device, window_frames)
+        video_act.append(action_embeddings)
+
+      if self.cfg.MODEL.USE_AUDIO:
+        audio_embeddings = self._extract_sound_features(device, window)
+        video_sound.append(audio_embeddings)
+
+    video_obj   = torch.from_numpy(np.array(video_obj))
+    video_frame = torch.from_numpy(np.array(video_frame))
+    video_act   = torch.from_numpy(np.array(video_act))
+    video_sound = torch.from_numpy(np.array(video_sound))
+    window_step_label = torch.from_numpy(np.array(window_step_label))
+    window_position_label = torch.from_numpy(np.array(window_position_label))
+    window_stop_frame = torch.from_numpy(np.array(window_stop_frame))
+    video_id = np.array([window["video_id"]])
+    n_windows = torch.tensor(len(video["windows"]))
+
+    return video_act, video_obj, video_frame, video_sound, n_windows, window_step_label, window_position_label, window_stop_frame, video_id

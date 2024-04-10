@@ -3,11 +3,39 @@
 SOURCE_PATH=$1
 OUTPUT_PATH=$2
 SKILL=$3
+TYPE=$4 ## frame sound
+EXTRACT=$5
 VIDEO_DEFAULT_FRAME_RATE=30
 SLOW_FAST_AUDIO_DEFAULT_SAMPLE_RATE=24000
-extract="false"
-type="frame" ## frame sound
+POSSIBLE_SKILLS=("M1" "M2" "M3" "M5" "R18")
+POSSIBLE_TYPES=("frame" "sound")
+POSSIBLE_BOOLEAN=("true" "false")
 
+if [[ ! -d $SOURCE_PATH ]]; then
+  echo "Source path [$SOURCE_PATH] doesn't exists"
+  exit 
+fi
+if [[ ! -d $OUTPUT_PATH ]]; then
+  echo "Output path [$OUTPUT_PATH] doesn't exists"
+  exit 
+fi
+if [[ ! ${POSSIBLE_SKILLS[*]} =~ $SKILL ]]; then
+  echo "Skill [$SKILL] not defined."
+  echo "Try one of these options [${POSSIBLE_SKILLS[*]}]"
+  exit 
+fi
+if [[ ! ${POSSIBLE_TYPES[*]} =~ $TYPE ]]; then
+  echo "Type [$TYPE] not defined."
+  echo "Try one of these options [${POSSIBLE_TYPES[*]}]"
+  exit 
+fi
+if [[ ! ${POSSIBLE_BOOLEAN[*]} =~ $EXTRACT ]]; then
+  echo "Boolean type [$EXTRACT] not defined."
+  echo "Try [${POSSIBLE_BOOLEAN[*]}]"
+  exit 
+fi
+
+#exit
 
 echo "|- Processing " $SOURCE_PATH
 mkdir -p $OUTPUT_PATH
@@ -35,12 +63,12 @@ do
         else  
           echo "|-- Extracting frames from " $file
 
-          if [[ $type == "frame" ]]; then
+          if [[ $TYPE == "frame" ]]; then
             mkdir -p $output
           fi
 
-          if [[ $extract == "true" ]]; then
-            if [[ $type == "frame" ]]; then
+          if [[ $EXTRACT == "true" ]]; then
+            if [[ $TYPE == "frame" ]]; then
 #            ffmpeg -i $file -qscale:v 2 "$output/frame_%010d.jpg"
               ffmpeg -i $file -filter:v fps=$VIDEO_DEFAULT_FRAME_RATE -qscale:v 2 "$output/frame_%010d.jpg" 
             else
@@ -49,11 +77,12 @@ do
           else
             echo "|-- Creating SquashFS for $subdir"
 
-            if [[ $type == "frame" ]]; then
+            if [[ $TYPE == "frame" ]]; then
               find $tmp/frame -type d -exec chmod 755 {} \;
               find $tmp/frame -type f -exec chmod 644 {} \;
 
               mksquashfs $tmp/frame $squash_output -keep-as-directory -noappend && rm -rv $tmp
+#              mksquashfs $tmp/frame $squash_output -keep-as-directory -noappend
             fi
           fi
         fi  
@@ -66,7 +95,7 @@ do
   fi
 done
 
-if [[ $extract != "true" && $type == "sound" ]]; then
+if [[ $EXTRACT != "true" && $TYPE == "sound" ]]; then
   find $OUTPUT_PATH -type d -exec chmod 755 {} \;
   find $OUTPUT_PATH -type f -exec chmod 644 {} \; 
 

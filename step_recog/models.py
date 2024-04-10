@@ -99,7 +99,7 @@ class OmniGRU(nn.Module):
         else:
           self.apply(custom_weights)
 
-    def forward(self, action, h=None, aud=None, objs=None, frame=None):
+    def forward(self, action, h=None, aud=None, objs=None, frame=None, return_last_step=True):
         x = []
 
         if self.use_action and (self.use_audio or self.use_objects):
@@ -120,11 +120,22 @@ class OmniGRU(nn.Module):
             obj_proj = self.relu(self.obj_proj(objs))
             frame_proj = self.relu(self.frame_proj(frame))
 
-            values = torch.softmax(torch.sum(frame_proj * obj_proj, dim=-1, keepdims=True), dim=-2)
-            obj_in = torch.sum(obj_proj * values, dim=-2)
-            # obj_in = self.relu(self.obj_fc(obj_in))
-            # if self.use_bn:
-            #     obj_in = self.obj_bn(obj_in.transpose(1, 2)).transpose(1, 2)
+            #=============================== Original tests ===============================#
+#            values = torch.softmax(torch.sum(frame_proj * obj_proj, dim=-1, keepdims=True), dim=-2)
+#            obj_in = torch.sum(obj_proj * values, dim=-2)
+
+            #=============================== Conceptual Fusion ===============================#
+            theta = nn.functional.cosine_similarity(frame_proj, obj_proj, dim = -1)
+
+            phi   = nn.functional.cosine_similarity(obj_proj[:, :, None, :, :], obj_proj[:, :, :, None, :], dim = -1)
+            phi   = torch.mean(phi, dim = -1)
+
+            w     = torch.softmax(theta + phi, dim = -1)
+            w     = w[:, :, :, None]
+
+            obj_in = w * frame_proj + (1 - w) * obj_proj
+            obj_in = torch.mean(obj_in, dim = -2)
+            #=================================================================================#
             obj_in = self.obj_fc(obj_in)
             if self.use_bn:
               obj_in = self.obj_bn(obj_in.transpose(1, 2)).transpose(1, 2)
@@ -133,7 +144,7 @@ class OmniGRU(nn.Module):
 
         x = torch.concat(x, -1) if len(x) > 1 else x[0]            
         out, h = self.gru(x, h)
-        out = self.relu(out)        
+        out = self.relu(out[:, -1]) if return_last_step else self.relu(out)
         out = self.fc(out)
         return out, h
 

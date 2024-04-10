@@ -89,12 +89,12 @@ def collate_fn(data):
       audio_new.append(audio_empty)        
 
       labels_empty = torch.zeros((max_length))
-      if labels[i].shape[0] > 0 and labels[i].shape[0] > 0:
+      if labels[i].shape[0] > 0:
         labels_empty[:labels[i].shape[0]] = labels[i]
       labels_new.append(labels_empty)
 
       labels_t_empty = torch.zeros((max_length,2))
-      if labels_t[i].shape[0] > 0 and labels_t[i].shape[0] > 0:
+      if labels_t[i].shape[0] > 0:
         labels_t_empty[:labels_t[i].shape[0]] = labels_t[i][...,-2:]
       labels_t_new.append(labels_t_empty)
 
@@ -102,10 +102,10 @@ def collate_fn(data):
       mask_empty[:labels[i].shape[0]] = 1
       mask_new.append(mask_empty)
 
-      # frame_idx_empty = torch.zeros((max_length))
-      # if frame_idx[i].shape[0] > 0 and frame_idx[i].shape[0] > 0:
-      #   frame_idx_empty[:frame_idx[i].shape[0]] = frame_idx[i]
-      # frame_idx_new.append(frame_idx_empty)        
+      frame_idx_empty = torch.zeros((max_length))
+      if frame_idx[i].shape[0] > 0:
+        frame_idx_empty[:frame_idx[i].shape[0]] = frame_idx[i]
+      frame_idx_new.append(frame_idx_empty)        
 
     omni_new = torch.stack(omni_new)
     objs_new = torch.stack(objs_new)
@@ -114,10 +114,9 @@ def collate_fn(data):
     labels_new = torch.stack(labels_new)
     labels_t_new = torch.stack(labels_t_new)
     mask_new = torch.stack(mask_new)
-    frame_idx_new = torch.stack(frame_idx)
+    frame_idx_new = torch.stack(frame_idx_new)
 
     return omni_new.float(), objs_new.float(), frame_new.float(), audio_new.float(), labels_new.long(), labels_t_new.float(), mask_new.long(), frame_idx_new.long(), ids
-
 
 def main():
   """
@@ -140,12 +139,13 @@ def main():
   if kfold:
     train_kfold(cfg, args)    
   else:
+    tr_data_loader = vl_data_loader = vl_dataset = tr_dataset = None
     if cfg.TRAIN.ENABLE:
       tr_dataset = Milly_multifeature_v4(cfg, split='train')
       vl_dataset = Milly_multifeature_v4(cfg, split='validation')
       tr_data_loader = DataLoader(
               tr_dataset, 
-              shuffle=True, 
+              shuffle=False,    #NOTE: Do not put True here. Training shuffle is inside the dataset.
               batch_size=cfg.TRAIN.BATCH_SIZE,
               num_workers=cfg.DATALOADER.NUM_WORKERS,
               collate_fn=collate_fn,
@@ -199,85 +199,84 @@ def main():
 
 def train_kfold(cfg, args, k = 10):
   timeout = 0
-  all_iteractions = False
-  kf_train_test = KFold(n_splits = k)
-  kf_train_val  = KFold(n_splits = (k - 1))
+  kf_train_val = KFold(n_splits = k)
 
   data   = pd.read_csv(cfg.DATASET.TR_ANNOTATIONS_FILE)
   videos = data.video_id.unique()
   main_path = cfg.OUTPUT.LOCATION
 
-  for idx, (aux_idx, test_idx) in enumerate(kf_train_test.split(videos), 1):
-    video_aux  = videos[aux_idx]
-    video_test = videos[test_idx]
+  test_videos = None
+#  videos, test_videos = train_test_split(videos, test_size=0.10, random_state=1740)
 
-    for jdx, (train_idx, val_idx) in enumerate(kf_train_val.split(video_aux), 1):
-      if all_iteractions or (((jdx == idx) or (idx == k and jdx == 1)) and (args.forced_iteration is None or idx == args.forced_iteration)):
-        print("==================== CROSS VALIDATION t{} v{}====================".format(idx, jdx))
-        video_train = video_aux[train_idx]
-        video_val   = video_aux[val_idx]    
-        
-        tr_dataset = Milly_multifeature_v4(cfg, split='train', filter=video_train)
-        vl_dataset = Milly_multifeature_v4(cfg, split='validation', filter=video_val)
+  for idx, (train_idx, val_idx) in enumerate(kf_train_val.split(videos), 1):    
+    if args.forced_iteration is None or idx == args.forced_iteration:
+      print("==================== CROSS VALIDATION fold {:02d} ====================".format(idx))      
+      video_train = videos[train_idx]
+      video_val   = videos[val_idx]
+          
+      tr_dataset = Milly_multifeature_v4(cfg, split='train', filter=video_train)
+      vl_dataset = Milly_multifeature_v4(cfg, split='validation', filter=video_val)
 
-        tr_data_loader = DataLoader(
-                tr_dataset, 
-                shuffle=True, 
-                batch_size=cfg.TRAIN.BATCH_SIZE,
-                num_workers=cfg.DATALOADER.NUM_WORKERS,
-                collate_fn=collate_fn,
-                drop_last=True,
-                timeout=timeout)
-        vl_data_loader = DataLoader(
-                vl_dataset, 
-                shuffle=False, 
-                batch_size=cfg.TRAIN.BATCH_SIZE,
-                num_workers=cfg.DATALOADER.NUM_WORKERS,
-                collate_fn=collate_fn,
-                drop_last=False,
-                timeout=timeout)
+      tr_data_loader = DataLoader(
+              tr_dataset, 
+              shuffle=False, 
+              batch_size=cfg.TRAIN.BATCH_SIZE,
+              num_workers=cfg.DATALOADER.NUM_WORKERS,
+              collate_fn=collate_fn,
+              drop_last=True,
+              timeout=timeout)
+      vl_data_loader = DataLoader(
+              vl_dataset, 
+              shuffle=False, 
+              batch_size=cfg.TRAIN.BATCH_SIZE,
+              num_workers=cfg.DATALOADER.NUM_WORKERS,
+              collate_fn=collate_fn,
+              drop_last=False,
+              timeout=timeout)
 
-        train_path = os.path.join(main_path, "kfold", "fold_t{}-v{}".format(idx, jdx) )
-        val_path   = os.path.join(train_path, "validation" )
-        test_path  = os.path.join(train_path, "test" )
+      train_path = os.path.join(main_path, "fold_{:02d}".format(idx) )
+      val_path   = os.path.join(train_path, "validation" )
+      test_path  = os.path.join(train_path, "test" )
 
-        if not os.path.isdir(val_path):
-          os.makedirs( val_path )
-        if not os.path.isdir(test_path):  
-          os.makedirs( test_path )
+      if not os.path.isdir(val_path):
+        os.makedirs( val_path )
+      if not os.path.isdir(test_path):  
+        os.makedirs( test_path )
 
-  #      pdb.set_trace()
-        cfg.OUTPUT.LOCATION = train_path
-        model_name = train(tr_data_loader, vl_data_loader, cfg)    
+#      pdb.set_trace()
+      cfg.OUTPUT.LOCATION = train_path
+      model_name = train(tr_data_loader, vl_data_loader, cfg)  
+#      model_name = os.path.join(cfg.OUTPUT.LOCATION, 'step_gru_best_model.pt')        
 
-        del tr_data_loader
-        del tr_dataset          
+      del tr_data_loader
+      del tr_dataset          
 
-        model, _ = build_model(cfg)      
-        weights  = torch.load(model_name)
-        model.load_state_dict(model.update_version(weights))      
+      model, _ = build_model(cfg)      
+      weights  = torch.load(model_name)
+      model.load_state_dict(model.update_version(weights))      
 
-        cfg.OUTPUT.LOCATION = val_path
-        evaluate(model, vl_data_loader, cfg)      
+      cfg.OUTPUT.LOCATION = val_path
+      evaluate(model, vl_data_loader, cfg)      
 
-        del vl_data_loader
-        del vl_dataset
+      del vl_data_loader
+      del vl_dataset
 
-        ts_dataset = Milly_multifeature_v4(cfg, split='test', filter=video_test)
-        ts_data_loader = DataLoader(
-                ts_dataset, 
-                shuffle=False, 
-                batch_size=cfg.TRAIN.BATCH_SIZE,
-                num_workers=cfg.DATALOADER.NUM_WORKERS,
-                collate_fn=collate_fn,
-                drop_last=False,
-                timeout=timeout)
-        
-        cfg.OUTPUT.LOCATION = test_path
-        evaluate(model, ts_data_loader, cfg)
+      ts_dataset = Milly_multifeature_v4(cfg, split='test', filter = test_videos)
+      ts_data_loader = DataLoader(
+              ts_dataset, 
+              shuffle=False, 
+              batch_size=cfg.TRAIN.BATCH_SIZE,
+              num_workers=cfg.DATALOADER.NUM_WORKERS,
+              collate_fn=collate_fn,
+              drop_last=False,
+              timeout=timeout)
+          
+      cfg.OUTPUT.LOCATION = test_path
+      evaluate(model, ts_data_loader, cfg)
 
-        del ts_data_loader
-        del ts_dataset        
+      del ts_data_loader
+      del ts_dataset                    
+
 
 if __name__ == "__main__":
     main()

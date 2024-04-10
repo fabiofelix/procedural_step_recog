@@ -65,8 +65,11 @@ class StepPredictor(nn.Module):
         self.h = None
 
     def queue_frame(self, image):
-      X_omnivore = self.omnivore.prepare_image(image, bgr2rgb=False)
-      self.omnivore_input_queue.append(X_omnivore)
+      if self.head.use_action:
+        X_omnivore = self.omnivore.prepare_image(image, bgr2rgb=False)
+        self.omnivore_input_queue.append(X_omnivore)
+      else:  
+        self.omnivore_input_queue.append(image) 
 
     def has_omni_maxlen(self):
       return len(self.omnivore_input_queue) == self.omnivore_input_queue.maxlen
@@ -83,7 +86,7 @@ class StepPredictor(nn.Module):
     def forward(self, image, queue_omni_frame = True):
 #        pdb.set_trace()
         # compute yolo
-        Z_objects = Z_frame = None
+        Z_objects, Z_frame = torch.zeros((1, 1, 25, 0)), torch.zeros((1, 1, 1, 0))
         if self.head.use_objects:
             results = self.yolo(image, verbose=False)
             boxes = results[0].boxes
@@ -99,12 +102,12 @@ class StepPredictor(nn.Module):
             Z_objects = Z_objects[None,None].float()
 
         # compute audio embeddings
-        Z_audio = None
+        Z_audio = torch.zeros((1, 1, 0)).float()
         if self.head.use_audio:
             Z_audio = None
 
         # compute video embeddings
-        Z_action = None
+        Z_action = torch.zeros((1, 1, 0)).float()
         if self.head.use_action:
             # rolling buffer of omnivore input frames
             if queue_omni_frame:
@@ -115,10 +118,10 @@ class StepPredictor(nn.Module):
             frame_idx = np.linspace(0, self.omnivore_input_queue.maxlen - 1, self.omni_cfg.MODEL.NFRAMES).astype('long') #same as act_recog.dataset.milly.py:pack_frames_to_video_clip
             X_omnivore = X_omnivore[:, :, frame_idx, :, :]
             _, Z_action = self.omnivore(X_omnivore.to(Z_objects.device), return_embedding=True)
-            Z_action = Z_action[None]
+            Z_action = Z_action[None].float()
 
         # mix it all together
         self.h = self.head.init_hidden(Z_action.shape[0])
-        prob_step, self.h = self.head(Z_action, self.h, Z_audio, Z_objects, Z_frame)
+        prob_step, self.h = self.head(Z_action, self.h.float(), Z_audio, Z_objects, Z_frame)
         prob_step = torch.softmax(prob_step[..., :-2], dim=-1) #prob_step has <n classe positions> <1 no step position> <2 begin-end frame identifiers>
         return prob_step

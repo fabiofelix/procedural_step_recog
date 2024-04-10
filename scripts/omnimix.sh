@@ -1,52 +1,36 @@
 #!/bin/bash
 
-ACTION_PATH=$1/*sqf
-ACTION_VAL_PATH=$1/val_subset/*sqf
-ACTION_TEST_PATH=$1/test_subset/*sqf
-IMG_PATH=$2/*sqf
-IMG_VAL_PATH=$2/val_subset/*sqf
-IMG_TEST_PATH=$2/test_subset/*sqf
-AUDIO_PATH=$3/*sqf
-CONFIG_PATH=$4
+IMG_PATH=$1/*sqf
+AUDIO_PATH=$2/*sqf
+CONFIG_PATH=$3
+DESC=${4:+-"$4"}
 ADD_OVER=""
 
 if [[ ! -z $1 ]]; then
-  for action in $ACTION_PATH; do
-    ADD_OVER="$ADD_OVER --overlay $action:ro"
-  done
-  for action in $ACTION_VAL_PATH; do
-    ADD_OVER="$ADD_OVER --overlay $action:ro"
-  done
-  for action in $ACTION_TEST_PATH; do
-    ADD_OVER="$ADD_OVER --overlay $action:ro"
-  done
-fi
-if [[ ! -z $2 ]]; then
   for img in $IMG_PATH; do
     ADD_OVER="$ADD_OVER --overlay $img:ro"
   done
-  for img in $IMG_VAL_PATH; do
-    ADD_OVER="$ADD_OVER --overlay $img:ro"
-  done
-  for img in $IMG_TEST_PATH; do
-    ADD_OVER="$ADD_OVER --overlay $img:ro"
-  done
-#echo $ADD_OVER
 fi
-if [[ ! -z $3 ]]; then
+if [[ ! -z $2 ]]; then
   for sound in $AUDIO_PATH; do
     ADD_OVER="$ADD_OVER --overlay $sound:ro"
   done
 fi
 
+#echo $ADD_OVER
+#exit
+
+for KFOLD_ITER in {1..10}; do
+#break
+
 sbatch <<EOSBATCH
 #!/bin/bash
 #SBATCH -c 12
 #SBATCH --mem 64GB
-#SBATCH --time 4:00:00
+#SBATCH --time 2-00:00:00
 #SBATCH --gres gpu:1
-#SBATCH --job-name step-recog
-#SBATCH --output logs/%J_step-recog.out
+#SBATCH --job-name step-recog-k$KFOLD_ITER$DESC
+#SBATCH --output logs/%J_step-recog-k$KFOLD_ITER$DESC.out
 #SBATCH --mail-type=BEGIN,END,ERROR
 #SBATCH --mail-user=$USER@nyu.edu
 
@@ -56,8 +40,9 @@ fi
 
 ./sing $ADD_OVER << EOF
 
-python tools/run_step_recog.py --cfg $CONFIG_PATH
+python tools/run_step_recog.py --cfg $CONFIG_PATH -i $KFOLD_ITER
 
 EOF
-
 EOSBATCH
+
+done

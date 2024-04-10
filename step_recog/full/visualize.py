@@ -36,6 +36,7 @@ def main(video_path, output_path='output.mp4', cfg_file=""):
         # iterate over video frames
         for idx, frame in tqdm.tqdm(enumerate(sv.get_video_frames_generator(video_path))):
             frame_aux = model.prepare(frame)
+            model.queue_frame(frame_aux)  
 
             if model.has_omni_maxlen() and idx % step_process == 0:
               # take in a queue frame and make the next prediction
@@ -43,7 +44,6 @@ def main(video_path, output_path='output.mp4', cfg_file=""):
               step_idx  = np.argmax(prob_step)
               step_desc = "No step" if step_idx >= len(model.STEPS) else model.STEPS[step_idx]              
               
-            model.queue_frame(frame_aux)  
             psm.process_timestep(prob_step)
 
             # draw the prediction (could be your bar chart) on the frame

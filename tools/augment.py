@@ -128,6 +128,26 @@ class GroupRandomHorizontalFlip(RandomGroup):
     def worker(self, img):
         return img.transpose(Image.FLIP_LEFT_RIGHT)
 
+class GroupSaltPepper(RandomGroup):
+    def __init__(self, ratio, **kw):
+      super().__init__(**kw)  
+      self.ratio = ratio
+
+    def worker(self, img):
+      img  = np.array(img)
+
+      ratio = self.ratio() if callable(self.ratio) else self.ratio
+
+      salt = np.random.randint(ratio, size=img.shape[:2])
+      salt = np.repeat(np.expand_dims(salt, axis = 2), 3, axis=2)
+      img  = np.where(salt == 0, 255, img)
+
+      pepper = np.random.randint(self.ratio(), size=img.shape[:2])
+      pepper = np.repeat(np.expand_dims(pepper, axis = 2), 3, axis=2)
+      img    = np.where(pepper == 0, 0, img)
+
+      return Image.fromarray(img)
+
 class Thumbnail:
     def __init__(self, size, **kw):
         super().__init__(**kw)
@@ -171,6 +191,7 @@ def get_augmentation(input_size=600, verbose=True):
             # solarize_factor=randomwalk(0.7, 1, 0.05)
             verbose=verbose
         ),
+        GroupSaltPepper(ratio=randomwalk(150, 250, 10) ),
         Stack(),
     ])
 

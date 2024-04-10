@@ -3,16 +3,15 @@ MODEL:
   CONTEXT_LENGTH: 'full'
   USE_ACTION: True  ##default true
   USE_OBJECTS: True  ##default true
-  USE_AUDIO: False   ##default false
+  USE_AUDIO: False  ##default false
   USE_BN: False      ##default false
   APPEND_OUT_POSITIONS: 3
 
-  YOLO_CHECKPOINT_URL: '/Users/bea/Downloads/M2_M3_M5_R18_v9_2.pt'
   OMNIVORE_CONFIG: '/home/user/data/config/OMNIVORE.yaml'
   SLOWFAST_CONFIG: '/home/user/data/auditory_slowfast/configs/BBN/SLOWFAST_R50.yaml'
 DATASET:
   NAME: 'Milly'
-  LOCATION: '/frame'
+  LOCATION: '/frame' 
   AUDIO_LOCATION: '/sound'
   INCLUDE_IMAGE_AUGMENTATIONS: True
   INCLUDE_TIME_AUGMENTATIONS: False
@@ -23,8 +22,7 @@ DATALOADER:
 TRAIN:
   ENABLE: True
   NUM_GPUS: 1
-  BATCH_SIZE: 32
+  BATCH_SIZE: 8 #32
   OPT: "adam"  #adam sgd rmsprop
   LR: 0.001
   EPOCHS: 25
-
