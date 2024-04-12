@@ -775,8 +775,10 @@ class Milly_multifeature_v4(Milly_multifeature):
       tail = video_ids[self.cfg.TRAIN.BATCH_SIZE * match_factor:]
       pad = self.cfg.TRAIN.BATCH_SIZE - len(tail)
 
-      if pad > 0:
-        video_ids.extend(video_ids[:pad])      
+      if 0 < pad and pad < self.cfg.TRAIN.BATCH_SIZE:
+        video_ids.extend(video_ids[:pad])
+      else:
+        pad = 0      
 
     win_size_sec  = [1, 2, 4] if self.time_augs else [2]
     hop_size_perc = [0.125, 0.25, 0.5] if self.time_augs else [0.5]

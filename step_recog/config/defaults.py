@@ -20,6 +20,7 @@ _C.TRAIN.MOMENTUM = 0.0
 _C.TRAIN.WEIGHT_DECAY = 0.0
 _C.TRAIN.SCHEDULER = None
 _C.TRAIN.RETURN_METRICS = False
+_C.TRAIN.CV_TEST_TYPE = None
 
 # -----------------------------------------------------------------------------
 # EVAL options

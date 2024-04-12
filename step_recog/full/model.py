@@ -3,7 +3,7 @@ import torch
 from torch import nn
 from collections import deque
 from ultralytics import YOLO
-import pdb
+import ipdb
 import cv2
 
 from act_recog.models import Omnivore
@@ -61,8 +61,8 @@ class StepPredictor(nn.Module):
         self.h = None  
 
     def reset(self):
-        self.omnivore_input_queue.clear()
-        self.h = None
+      self.omnivore_input_queue.clear()
+      self.h = None
 
     def queue_frame(self, image):
       if self.head.use_action:
@@ -84,7 +84,6 @@ class StepPredictor(nn.Module):
       return im      
 
     def forward(self, image, queue_omni_frame = True):
-#        pdb.set_trace()
         # compute yolo
         Z_objects, Z_frame = torch.zeros((1, 1, 25, 0)), torch.zeros((1, 1, 1, 0))
         if self.head.use_objects:
@@ -98,7 +97,7 @@ class StepPredictor(nn.Module):
             # pad boxes to size
             _pad = torch.zeros((max(self.MAX_OBJECTS - Z_objects.shape[0], 0), Z_objects.shape[1])).to(Z_objects.device)
             Z_objects = torch.cat([Z_objects, _pad])[:self.MAX_OBJECTS]
-            Z_frame = Z_frame[None].float()
+            Z_frame = Z_frame[None,None].float()
             Z_objects = Z_objects[None,None].float()
 
         # compute audio embeddings
@@ -121,7 +120,9 @@ class StepPredictor(nn.Module):
             Z_action = Z_action[None].float()
 
         # mix it all together
-        self.h = self.head.init_hidden(Z_action.shape[0])
+        if self.h is None:
+          self.h = self.head.init_hidden(Z_action.shape[0])
+          
         prob_step, self.h = self.head(Z_action, self.h.float(), Z_audio, Z_objects, Z_frame)
         prob_step = torch.softmax(prob_step[..., :-2], dim=-1) #prob_step has <n classe positions> <1 no step position> <2 begin-end frame identifiers>
         return prob_step

@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 from step_recog.config import load_config
 from step_recog import train, evaluate, build_model
 from step_recog.datasets import Milly_multifeature_v4
-from sklearn.model_selection import KFold
+from sklearn.model_selection import KFold, train_test_split
 import pandas as pd, pdb, numpy as np
 
 def parse_args():
@@ -206,7 +206,11 @@ def train_kfold(cfg, args, k = 10):
   main_path = cfg.OUTPUT.LOCATION
 
   test_videos = None
-#  videos, test_videos = train_test_split(videos, test_size=0.10, random_state=1740)
+
+  if cfg.TRAIN.CV_TEST_TYPE == "10p":
+    print("Spliting the dataset 90:10 for training/validation and testing")
+    videos, test_videos = train_test_split(videos, test_size=0.10, random_state=1740)
+
 
   for idx, (train_idx, val_idx) in enumerate(kf_train_val.split(videos), 1):    
     if args.forced_iteration is None or idx == args.forced_iteration:
