@@ -142,7 +142,9 @@ class GroupSaltPepper(RandomGroup):
       salt = np.repeat(np.expand_dims(salt, axis = 2), 3, axis=2)
       img  = np.where(salt == 0, 255, img)
 
-      pepper = np.random.randint(self.ratio(), size=img.shape[:2])
+      ratio  = self.ratio() if callable(self.ratio) else self.ratio
+
+      pepper = np.random.randint(ratio, size=img.shape[:2])
       pepper = np.repeat(np.expand_dims(pepper, axis = 2), 3, axis=2)
       img    = np.where(pepper == 0, 0, img)
 
@@ -191,7 +193,7 @@ def get_augmentation(input_size=600, verbose=True):
             # solarize_factor=randomwalk(0.7, 1, 0.05)
             verbose=verbose
         ),
-        GroupSaltPepper(ratio=randomwalk(150, 250, 10) ),
+        GroupSaltPepper(ratio=randomwalk(900, 1000, 10) ),
         Stack(),
     ])
 

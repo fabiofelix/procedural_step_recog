@@ -25,7 +25,7 @@ def args_hook(cfg_file):
 class StepPredictor(nn.Module):
     """Step prediction model that takes in frames and outputs step probabilities.
     """
-    def __init__(self, cfg_file):
+    def __init__(self, cfg_file, video_fps = 30):
         super().__init__()
         # load config
         self.cfg = load_config(args_hook(cfg_file))
@@ -57,7 +57,7 @@ class StepPredictor(nn.Module):
             raise NotImplementedError()
         
         # frame buffers and model state
-        self.omnivore_input_queue = deque(maxlen=self.omni_cfg.DATASET.FPS * self.omni_cfg.MODEL.WIN_LENGTH)
+        self.omnivore_input_queue = deque(maxlen=video_fps * self.omni_cfg.MODEL.WIN_LENGTH)#default: 2seconds
         self.h = None  
 
     def reset(self):

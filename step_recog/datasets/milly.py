@@ -572,7 +572,7 @@ class Milly_multifeature_v4(Milly_multifeature):
     super().__init__(cfg, split, filter)  
 
     self.augment_configs = {}
-    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    self.device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
     if self.cfg.MODEL.USE_OBJECTS:
       yolo_checkpoint = cached_download_file(cfg.MODEL.YOLO_CHECKPOINT_URL)
@@ -597,7 +597,7 @@ class Milly_multifeature_v4(Milly_multifeature):
       layer = self.slowfast._modules.get("head")._modules.get("dropout")
       handle = layer.register_forward_hook(slowfast_hook)
 
-    self.to(device)  
+    self.to(self.device)  
 
   def to(self, device):
     if self.cfg.MODEL.USE_OBJECTS:
@@ -751,7 +751,7 @@ class Milly_multifeature_v4(Milly_multifeature):
     return vid_ann  
 
   def _construct_loader(self, split):
-    self.annotations = pd.read_csv(self.annotations_file, usecols=['video_id','start_frame','stop_frame','narration','verb_class'])
+    self.annotations = pd.read_csv(self.annotations_file, usecols=['video_id','start_frame','stop_frame','narration','verb_class','video_fps'])
 
     #Some annotations have start_frame == 0. M3 for example
     self.annotations["start_frame"] = self.annotations["start_frame"].clip(lower = 1)
@@ -784,9 +784,6 @@ class Milly_multifeature_v4(Milly_multifeature):
     hop_size_perc = [0.125, 0.25, 0.5] if self.time_augs else [0.5]
     start_delta   = 5  #smallest step per skill M1: 2 frames; M2: 7 frames, M3: 9 frames, M5: 21 frames, R18: 5 frames
 
-#    video_ids = ['R18-5']    
-#    pdb.set_trace()  
-
     progress = tqdm.tqdm(video_ids, total=len(video_ids), desc = "Video")
 
     for v in video_ids:     
@@ -805,13 +802,12 @@ class Milly_multifeature_v4(Milly_multifeature):
         ##First window: starts in step_ann.start_frame - WINDOW SIZE and stops in step_ann.start_frame
         ##Chooses a stop in [ step_ann.start_frame,  step_ann.start_frame + delta ]
         ##start_frame < 0 is used to facilitate the process. Inside the loop it is always truncated to 1 and do_getitem pads the begining of the window.
-        stop_frame = step_ann.start_frame
-        high = min(step_ann.start_frame + start_delta, stop_frame + 1)
+        high = min(step_ann.start_frame + start_delta, step_ann.stop_frame + 1)
         stop_frame = self.rng.integers(low = step_ann.start_frame, high = high)
 
-        start_frame = stop_frame - self.video_fps * win_size_sec[win_size] + 1
+        start_frame = stop_frame - step_ann.video_fps * win_size_sec[win_size] + 1
 
-        stop_sound_point  = 0 if step_ann.start_frame == 1 else int(self.slowfast_cfg.AUDIO_DATA.SAMPLING_RATE * step_ann.start_frame / self.video_fps)
+        stop_sound_point  = 0 if step_ann.start_frame == 1 else int(self.slowfast_cfg.AUDIO_DATA.SAMPLING_RATE * step_ann.start_frame / step_ann.video_fps)
         start_sound_point = int(stop_sound_point - self.slowfast_cfg.AUDIO_DATA.SAMPLING_RATE * (win_size_sec[win_size] - 0.001)) #adjusted (-0.001) because of Slowfast set up
 
         process_last_frames = stop_frame != step_ann.stop_frame
@@ -838,14 +834,14 @@ class Milly_multifeature_v4(Milly_multifeature):
             'label': step_ann.verb_class,
             'label_pos': window_pos,
             'step_limit': [step_ann.start_frame, step_ann.stop_frame],
-            'window_frame_size': int(self.video_fps * win_size_sec[win_size]),
+            'window_frame_size': int(step_ann.video_fps * win_size_sec[win_size]),
             'window_point_size': int(self.slowfast_cfg.AUDIO_DATA.SAMPLING_RATE * (win_size_sec[win_size] - 0.001)),
           })
 
           previous_stop_frame = stop_frame
 
-          start_frame += int(self.video_fps * win_size_sec[win_size] * hop_size_perc[hop_size])
-          stop_frame   = int(start_frame - 1 + self.video_fps * win_size_sec[win_size])
+          start_frame += int(step_ann.video_fps * win_size_sec[win_size] * hop_size_perc[hop_size])
+          stop_frame   = int(start_frame - 1 + step_ann.video_fps * win_size_sec[win_size])
 
           start_sound_point += int(self.slowfast_cfg.AUDIO_DATA.SAMPLING_RATE * win_size_sec[win_size] * hop_size_perc[hop_size])
           stop_sound_point  = int(start_sound_point + self.slowfast_cfg.AUDIO_DATA.SAMPLING_RATE * (win_size_sec[win_size] - 0.001)) #adjusted (-0.001) because of Slowfast set up          
@@ -855,9 +851,9 @@ class Milly_multifeature_v4(Milly_multifeature):
             process_last_frames = False
 
             stop_frame  = int(step_ann.stop_frame)
-            start_frame = int(stop_frame - self.video_fps * win_size_sec[win_size] + 1)
+            start_frame = int(stop_frame - step_ann.video_fps * win_size_sec[win_size] + 1)
 
-            stop_sound_point  = int(self.slowfast_cfg.AUDIO_DATA.SAMPLING_RATE * step_ann.stop_frame / self.video_fps)
+            stop_sound_point  = int(self.slowfast_cfg.AUDIO_DATA.SAMPLING_RATE * step_ann.stop_frame / step_ann.video_fps)
             start_sound_point = int(stop_sound_point - self.slowfast_cfg.AUDIO_DATA.SAMPLING_RATE * (win_size_sec[win_size] - 0.001)) #adjusted (-0.001) because of Slowfast set up
 
       self.datapoints[ipoint] = {
@@ -880,7 +876,7 @@ class Milly_multifeature_v4(Milly_multifeature):
       else:  
         self.augment_configs[video_id] = None
 
-        if self.rng.choice([True, False]):
+        if self.rng.choice([True, False], p = [self.cfg.DATASET.IMAGE_AUGMENTATION_PERCENTAGE, 1.0 - self.cfg.DATASET.IMAGE_AUGMENTATION_PERCENTAGE]):
           aug = get_augmentation(None, verbose = False)
           self.augment_configs[video_id] = aug
 
@@ -953,25 +949,25 @@ class Milly_multifeature_v4(Milly_multifeature):
     Z_clip = self.clip_patches(frame, boxes.xywh.cpu().numpy(), include_frame=True)
 
     # concatenate with boxes and confidence
-    Z_frame = torch.cat([Z_clip[:1], torch.tensor([[0, 0, 1, 1, 1]]).to(Z_clip.device)], dim=1)
+    Z_frame = torch.cat([Z_clip[:1], torch.tensor([[0, 0, 1, 1, 1]]).to(self.device)], dim=1)
     Z_objects = torch.cat([Z_clip[1:], boxes.xyxyn, boxes.conf[:, None]], dim=1)  ##deticn_bbn.py:Extractor.compute_store_clip_boxes returns xyxyn
     # pad boxes to size
-    _pad = torch.zeros((max(MAX_OBJECTS - Z_objects.shape[0], 0), Z_objects.shape[1])).to(Z_objects.device)
+    _pad = torch.zeros((max(MAX_OBJECTS - Z_objects.shape[0], 0), Z_objects.shape[1])).to(self.device)
     Z_objects = torch.cat([Z_objects, _pad])[:MAX_OBJECTS]
 
     torch.cuda.empty_cache()   
-    return Z_objects.detach().cpu().float(), Z_frame.detach().cpu().float(), Z_objects.device
+    return Z_objects.detach().cpu().float(), Z_frame.detach().cpu().float()
 
-  def _extract_act_features(self, device, window_frames):
+  def _extract_act_features(self, window_frames):
     frame_idx  = np.linspace(0, len(window_frames) - 1, self.omni_cfg.MODEL.NFRAMES).astype('long')
     X_omnivore = [ self.omnivore.prepare_image(frame, bgr2rgb = False) for frame in  window_frames ]
     X_omnivore = torch.stack(list(X_omnivore), dim=1)[None]
     X_omnivore = X_omnivore[:, :, frame_idx, :, :]
-    _, Z_action = self.omnivore(X_omnivore.to(device), return_embedding=True)
+    _, Z_action = self.omnivore(X_omnivore.to(self.device), return_embedding=True)
 
     return Z_action.detach().cpu()[0]  
 
-  def _extract_sound_features(self, device, window): 
+  def _extract_sound_features(self, window): 
     #Loads sound features
     wav_path = os.path.join(self.data_path_audio, window["video_id"] + ".wav")
     global SOUND_FEATURES_LIST
@@ -986,7 +982,7 @@ class Milly_multifeature_v4(Milly_multifeature):
       if sound.shape[0] <  window['window_point_size']:
         sound = np.concatenate((np.zeros(window['window_point_size'] - len(sound), dtype = sound.dtype), sound))
 
-      spec = self.slowfast.prepare(sound, device)
+      spec = self.slowfast.prepare(sound, self.device)
       SOUND_FEATURES_LIST = []
       self.slowfast(spec)
 
@@ -1014,16 +1010,16 @@ class Milly_multifeature_v4(Milly_multifeature):
       window_frames = self.augment_frames(window_frames, window["video_id"])
 
       if self.cfg.MODEL.USE_OBJECTS: 
-        obj_embeddings, frame_embeddings, device = self._extract_img_features(window_frames)
+        obj_embeddings, frame_embeddings = self._extract_img_features(window_frames)
         video_obj.append(obj_embeddings)
         video_frame.append(frame_embeddings)
 
       if self.cfg.MODEL.USE_ACTION:      
-        action_embeddings = self._extract_act_features(device, window_frames)
+        action_embeddings = self._extract_act_features(window_frames)
         video_act.append(action_embeddings)
 
       if self.cfg.MODEL.USE_AUDIO:
-        audio_embeddings = self._extract_sound_features(device, window)
+        audio_embeddings = self._extract_sound_features(window)
         video_sound.append(audio_embeddings)
 
     video_obj   = torch.from_numpy(np.array(video_obj))

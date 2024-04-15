@@ -20,13 +20,13 @@ def main(video_path, output_path='output.mp4', cfg_file=""):
     '''Visualize the outputs of the model on a video.
 
     '''
-    # define model
-    model = StepPredictor(cfg_file).to("cuda")
-
     # create video reader and video writer
     video_info = sv.VideoInfo.from_video_path(video_path)
 
-    step_process = 30
+    # define model
+    model = StepPredictor(cfg_file, video_info.fps).to("cuda")
+
+    step_process = video_info.fps #1 second by default
     prob_step = np.zeros(model.cfg.MODEL.OUTPUT_DIM + 1)
     prob_step[-1] = 1.0
     step_desc = "No step"

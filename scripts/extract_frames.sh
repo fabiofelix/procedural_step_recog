@@ -69,8 +69,7 @@ do
 
           if [[ $EXTRACT == "true" ]]; then
             if [[ $TYPE == "frame" ]]; then
-#            ffmpeg -i $file -qscale:v 2 "$output/frame_%010d.jpg"
-              ffmpeg -i $file -filter:v fps=$VIDEO_DEFAULT_FRAME_RATE -qscale:v 2 "$output/frame_%010d.jpg" 
+              ffmpeg -i $file -qscale:v 2 "$output/frame_%010d.jpg"
             else
               ffmpeg -i $file -vn -acodec pcm_s16le -ac 1 -ar $SLOW_FAST_AUDIO_DEFAULT_SAMPLE_RATE  $OUTPUT_PATH/$name.wav
             fi
@@ -82,7 +81,6 @@ do
               find $tmp/frame -type f -exec chmod 644 {} \;
 
               mksquashfs $tmp/frame $squash_output -keep-as-directory -noappend && rm -rv $tmp
-#              mksquashfs $tmp/frame $squash_output -keep-as-directory -noappend
             fi
           fi
         fi  

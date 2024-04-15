@@ -357,14 +357,37 @@ def plot_history(history, cfg):
   plt.subplot(2, 3, 4)    
   plot_data(history["train_acc"], history["val_acc"], xlabel = "Epoch", ylabel = "Categorical accuracy", mark_best = history["best_epoch"])     
 
-#  plt.subplot(2, 3, 5)    
-#  plot_data(history["train_b_acc"], history["val_b_acc"], xlabel = "Epoch", ylabel = "Balanced accuracy", mark_best = history["best_epoch"])       
+##  plt.subplot(2, 3, 5)    
+##  plot_data(history["train_b_acc"], history["val_b_acc"], xlabel = "Epoch", ylabel = "Balanced accuracy", mark_best = history["best_epoch"])       
 
   plt.subplot(2, 3, 5)    
   plot_data(history["train_grad_norm"], [], xlabel = "Epoch", ylabel = "Gradient norm", mark_best = history["best_epoch"])       
 
   figure.tight_layout()
-  figure.savefig(os.path.join(cfg.OUTPUT.LOCATION, "history_chart.png"))  
+  figure.savefig(os.path.join(cfg.OUTPUT.LOCATION, "history_chart.png"))
+
+  summary_history(history, cfg)
+
+def summary_history(history, cfg=None):
+  path = history
+
+  if isinstance(history, str):
+    history = open(os.path.join(path, "history.json"), "r")
+    history = json.load(history)
+  elif isinstance(history, dict):
+    path = cfg.OUTPUT.LOCATION
+
+  figure = plt.figure(figsize = (1024 / 100, 290 / 100), dpi = 100)
+  #====================================================================================================================#  
+  plt.subplot(1, 2, 1)   
+  plot_data(history["train_loss"], history["val_loss"], xlabel = "Epoch", ylabel = "Total Loss", mark_best = history["best_epoch"])    
+
+  plt.subplot(1, 2, 2)   
+  plot_data(history["train_acc"], history["val_acc"], xlabel = "Epoch", ylabel = "Categorical accuracy", mark_best = history["best_epoch"])     
+
+  figure.tight_layout()
+  figure.savefig(os.path.join(path, "history_chart_short.png"))
+  #====================================================================================================================#  
 
 def plot_data(train, val, xlabel = None, ylabel = None, mark_best = None, palette = {"blue": "#1F77B4", "red": "#B41D1EFF", "grey": "#808080"}):
   plt.plot(range(1, len(train) + 1), train, color = palette["blue"], linestyle="-")
