@@ -1,7 +1,8 @@
 
-# **Action-step recognition**
+# **Step recognition**
 
-This is the preception code of the [PTG project](https://github.com/VIDA-NYU/ptg-server-ml) developed by NYU. It can process representations of human actions to infer the current task step, i.e. steps of a cooking recipe or a medical procedure.
+This is code for training and evaluation of the preception models built on the [PTG project](https://github.com/VIDA-NYU/ptg-server-ml) and developed by NYU.
+It can process videos and predict steps of tasks such as related to medical and first aid.
 
 >Note: all this process is working on [NYU HPC](https://sites.google.com/nyu.edu/nyu-hpc)
 
@@ -55,7 +56,21 @@ The preprocessing steps are the extraction of video frames and sound. Basically,
   bash scripts/extract_frames.sh /path/to/the/video/mp4/files /path/to/save/the/sound/ SKILL sound true 
   ```
 
-  1.2 Using [squash](https://sites.google.com/nyu.edu/nyu-hpc/hpc-systems/hpc-storage/data-management/squash-file-system-and-singularity) to compact the files.
+  1.2 `/path/to/the/video/mp4/files` should be structure such as
+
+  ```
+   |- skill desc
+     Data
+       |- video_id
+         video_id.skill_labels_by_frame.txt
+         video_id.mp4
+       |- video_id   
+         video_id.skill_labels_by_frame.txt
+         video_id.mp4
+       ...               
+  ```
+
+  1.3 Using [squash](https://sites.google.com/nyu.edu/nyu-hpc/hpc-systems/hpc-storage/data-management/squash-file-system-and-singularity) to compact the files.
   ```
   bash scripts/extract_frames.sh /path/to/the/video/mp4/files /path/to/save/the/frames/ SKILL frame false 
 
@@ -86,10 +101,10 @@ python step_recog/full/visualize.py /path/to/the/video/mp4/file output.mp4 confi
 
 ## **Code structure**
 
-1. Main code: `toos/run_step_recog.py`
+1. Main code: `toos/run_step_recog.py` (function *train_kfold*)
 2. Training/evaluation routines: `step_recog/iterators.py` (functions *train*, *evaluate*)
 3. Model classes: `step_recog/models.py`
-4. Dataloader: `step_recog/datasets/milly.py` (methods *_construct_loader* and *do_getitem*)
+4. Dataloader: `step_recog/datasets/milly.py` (class *Milly_multifeature_v4* and methods *_construct_loader* and *do_getitem*)
 5. Image augmentation: `tools/augmentation.py` (function *get_augmentation*)
 6. Basic configuration: `step_recog/config/defaults.py` (more important), `act_recog/config/defaults.py`, `auditory_slowfast/config/defaults.py`
 6. Visualizer: `step_recog/full/visualize.py` implements a specific code that combines dataloading, model prediction, and a state machine. It uses the user interface with the trained models.
