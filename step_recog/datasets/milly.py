@@ -995,13 +995,11 @@ class Milly_multifeature_v4(Milly_multifeature):
     video_frame = []
     video_act = []
     video_sound = []
-#    video_id = []
     window_step_label = []
     window_position_label = []
     window_stop_frame = []
 
     for window in video["windows"]:
-#      video_id.append(window["video_id"])
       window_step_label.append(window["label"])
       window_position_label.append(window["label_pos"])
       window_stop_frame.append(window["stop_frame"])

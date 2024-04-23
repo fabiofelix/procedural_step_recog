@@ -1,25 +1,24 @@
 
 # **Step recognition**
 
-This is code for training and evaluation of the preception models built on the [PTG project](https://github.com/VIDA-NYU/ptg-server-ml) and developed by NYU.
-It can process videos and predict steps of tasks such as related to medical and first aid.
+This is the code for training and evaluation of the preception models built on the [PTG project](https://github.com/VIDA-NYU/ptg-server-ml) and developed by NYU.
+It can process videos and predict task (skill) steps such as the ones related to emergency medical services.
 
->Note: all this process is working on [NYU HPC](https://sites.google.com/nyu.edu/nyu-hpc)
+>Note: this are the used skills:  Trauma Assessment (M1), Apply tourniquet (M2), Pressure Dressing (M3), X-Stat (M5), and Apply Chest seal (R18)
 
 ## **Install**
 
+>Note: all this process is working in the [NYU Greene HPC](https://sites.google.com/nyu.edu/nyu-hpc/hpc-systems/greene)
+
 #### **Dependences**
 
-<!-- [![NumPy](https://img.shields.io/badge/numpy-green?logo=numpy)](https://pypi.org/project/numpy/) -->
-[![Opencv](https://img.shields.io/badge/opencv-brown?logo=opencv)](https://pypi.org/project/opencv-python/)
-[![pandas](https://img.shields.io/badge/pandas-blue?logo=pandas)](https://pypi.org/project/pandas/)
+[![CLIP](https://img.shields.io/badge/CLIP-blue?logo=openai)](https://github.com/openai/CLIP)
+[![ultralytics](https://img.shields.io/badge/ultralytics-green?logo=ultralytics)](https://pypi.org/project/ultralytics/)
+
 [![fire](https://img.shields.io/badge/fire-yellow?logo=fire)](https://pypi.org/project/fire/)
-[![Pillow](https://img.shields.io/badge/pillow-red?logo=pillow)](https://pypi.org/project/Pillow/)
 [![fvcore](https://img.shields.io/badge/fvcore-grey?logo=fvcore)](https://pypi.org/project/fvcore/)
 [![hydra-core](https://img.shields.io/badge/hydracore-green?logo=hydra-core)](https://pypi.org/project/hydra-core/)
 [![einops](https://img.shields.io/badge/einops-brown?logo=einops)](https://pypi.org/project/einops/)
-[![torch](https://img.shields.io/badge/torch-blue?logo=torch)](https://pypi.org/project/torch/)
-[![torch-vision](https://img.shields.io/badge/torchvision-yellow?logo=torchvision)](https://pypi.org/project/torchvision/)
 [![timm](https://img.shields.io/badge/timm-red?logo=timm)](https://pypi.org/project/timm/)
 
 [![librosa](https://img.shields.io/badge/librosa-blue?logo=librosa)](https://pypi.org/project/librosa/)
@@ -28,16 +27,23 @@ It can process videos and predict steps of tasks such as related to medical and 
 [![simplejson](https://img.shields.io/badge/simplejson-yellow?logo=simplejson)](https://pypi.org/project/simplejson/)
 [![tensorboard](https://img.shields.io/badge/tensorboard-red?logo=tensorboard)](https://pypi.org/project/tensorboard/)  
 
-[![CLIP](https://img.shields.io/badge/CLIP-blue?logo=openai)](https://github.com/openai/CLIP)
-[![ultralytics](https://img.shields.io/badge/ultralytics-green?logo=ultralytics)](https://pypi.org/project/ultralytics/)
 [![pathtrees](https://img.shields.io/badge/pathtrees-brown?logo=pathtrees)](https://pypi.org/project/pathtree/)
 [![pathtrees](https://img.shields.io/badge/gdown-yellow?logo=gdown)](https://pypi.org/project/gdown/)    
+
+
+<!-- [![wandb](https://img.shields.io/badge/wandb-brown?logo=wandb)](https://pypi.org/project/wandb/)
+[![pathtrees](https://img.shields.io/badge/pathtrees-brown?logo=pathtrees)](https://pypi.org/project/pathtree/) -->
+
 
 #### **Repo**
 
   ```
   git clone --recursive git@github.com:fabiofelix/procedural_step_recog.git
 
+  cd procedural_step_recog/
+  pip install -e .
+
+  cd auditory_slowfast/
   pip install -e .
   ```
 
@@ -77,7 +83,7 @@ The preprocessing steps are the extraction of video frames and sound. Basically,
   bash scripts/extract_frames.sh /path/to/the/video/mp4/files /path/to/save/the/sound/ SKILL sound false  
   ```  
 
->Note: to execute this script, consider to use *ubuntu-22.04.3.sif*  or *rockylinux-9.2.sif* available on the NYU HPC.
+>Note: to execute this script, consider to use singularity with the image *ubuntu-22.04.3.sif*  or *rockylinux-9.2.sif* both available on the NYU HPC.
 
 ## **Training and making predictions**  
 

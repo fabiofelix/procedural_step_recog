@@ -302,9 +302,7 @@ def evaluate(model, data_loader, cfg, aggregate_avg = False):
   number_classes = cfg.MODEL.OUTPUT_DIM if cfg.MODEL.APPEND_OUT_POSITIONS == 2 else cfg.MODEL.OUTPUT_DIM + 1
   device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
   model.eval()  
-
-  video_ids = []
-  frames  = []
+  
   outputs = []
   targets = []
 
@@ -317,16 +315,22 @@ def evaluate(model, data_loader, cfg, aggregate_avg = False):
     frame_idx = frame_idx.cpu().numpy()
 
     for video_id, video_frames, frame_target, frame_pred in zip(videos, frame_idx, label, out):
+      aux_frame = []
+      aux_targets = []
+      aux_outputs = []
+
       for frame, target, pred in zip(video_frames, frame_target, frame_pred):
         if frame > 0:
-          video_ids.append(video_id[0])
-          frames.append(frame)
+          aux_frame.append(frame)
+          aux_targets.append(target)
+          aux_outputs.append(pred)
+
           targets.append(target)
           outputs.append(pred)
 
-  video_ids = np.array(video_ids)
-  frames  = np.array(frames)
-  targets = np.array(targets)          
+      save_video_evaluation(video_id[0], aux_frame, aux_targets, aux_outputs, cfg)  
+
+  targets = np.array(targets)
   outputs = np.array(outputs)
 
   classes = [ i for i in range(number_classes)]
@@ -334,10 +338,6 @@ def evaluate(model, data_loader, cfg, aggregate_avg = False):
   classes_desc[-1] = "No step"
   save_evaluation(targets, np.argmax(outputs, axis = 1), classes, cfg, label_order = classes_desc)
 
-  np.save(f'{cfg.OUTPUT.LOCATION}/video_ids.npy', video_ids)
-  np.save(f'{cfg.OUTPUT.LOCATION}/frames.npy', frames)
-  np.save(f'{cfg.OUTPUT.LOCATION}/outputs.npy', outputs)
-  np.save(f'{cfg.OUTPUT.LOCATION}/targets.npy', targets)  
 
 def plot_history(history, cfg):
   hist_file = open(os.path.join(cfg.OUTPUT.LOCATION, "history.json"), "w")
@@ -410,7 +410,7 @@ def plot_data(train, val, xlabel = None, ylabel = None, mark_best = None, palett
   if mark_best is not None:  
     plt.axvline(x = mark_best, color = palette["grey"])
 
-def save_evaluation(expected, predicted, classes, cfg, class_names = None, label_order = None, normalize = "true", file_name = "confusion_matrix.png", pad = None):
+def save_evaluation(expected, predicted, classes, cfg, label_order = None, normalize = "true", file_name = "confusion_matrix.png", pad = None):
   file = open(os.path.join(cfg.OUTPUT.LOCATION, "metrics.txt"), "w")
 
   try:
@@ -442,6 +442,46 @@ def save_evaluation(expected, predicted, classes, cfg, class_names = None, label
   finally:
     plt.close()
     sb.reset_orig()
+
+def save_video_evaluation(video_id, window_last_frame, expected, probs, cfg):
+  expected = np.array(expected)
+  output_location = os.path.join(cfg.OUTPUT.LOCATION, "video_evaluation")
+
+  if not os.path.isdir(output_location):
+    os.mkdir(output_location)
+
+  last_expected = np.max(expected)
+  expected[expected == last_expected] = -1
+
+  predicted = np.argmax(probs, axis = 1) 
+  last_predicted = np.max(predicted)
+  predicted[predicted == last_predicted] = -1
+
+  classes_desc = [ "No step" if i == 0 else "Step " + str(i)  for i in range(last_expected + 1)]  
+
+  figure = plt.figure(figsize = (1024 / 100, 768 / 100), dpi = 100)
+
+  plt.subplot(2, 1, 1)
+  plt.step(window_last_frame, expected, c="royalblue")
+  plt.yticks( [ i - 1 for i in range(last_expected + 1) ], classes_desc)  
+
+  plt.step(window_last_frame, predicted, c="orange")
+  plt.yticks( [ i - 1 for i in range(last_predicted + 1) ], classes_desc)    
+
+  plt.legend(["target", "predicted"])
+  plt.grid(axis = "y")      
+
+  probs = np.max(probs, axis = 1)
+
+  plt.subplot(2, 1, 2)
+  plt.plot(window_last_frame, probs, marker = 'o', c="teal")
+  plt.axhline(y = np.mean(probs), color = 'grey', linestyle = ':')  
+  plt.ylabel("Confidence")
+  plt.xlabel("last window frame")  
+
+  figure.tight_layout()
+  figure.savefig(os.path.join(output_location, "{}-step_variation.png".format(video_id)))    
+
 
 ##https://github.com/scikit-learn/scikit-learn/blob/093e0cf14/sklearn/metrics/_classification.py
 ##treating division-by-zero

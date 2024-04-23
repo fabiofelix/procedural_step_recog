@@ -209,8 +209,10 @@ def train_kfold(cfg, args, k = 10):
 
   if cfg.TRAIN.CV_TEST_TYPE == "10p":
     print("Spliting the dataset 90:10 for training/validation and testing")
-    videos, test_videos = train_test_split(videos, test_size=0.10, random_state=1740)
-
+    if "M5" in cfg.SKILLS[0]["NAME"]:
+      videos, test_videos = train_test_split(videos, test_size=0.10, random_state=1030)  #M5
+    elif "R18" in cfg.SKILLS[0]["NAME"]:
+      videos, test_videos = train_test_split(videos, test_size=0.10, random_state=1740) #R18
 
   for idx, (train_idx, val_idx) in enumerate(kf_train_val.split(videos), 1):    
     if args.forced_iteration is None or idx == args.forced_iteration:

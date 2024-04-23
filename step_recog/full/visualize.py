@@ -38,7 +38,7 @@ def main(video_path, output_path='output.mp4', cfg_file=""):
             frame_aux = model.prepare(frame)
             model.queue_frame(frame_aux)  
 
-            if model.has_omni_maxlen() and idx % step_process == 0:
+            if idx % step_process == 0:
               # take in a queue frame and make the next prediction
               prob_step = model(frame_aux, queue_omni_frame = False).cpu().squeeze().numpy()
               step_idx  = np.argmax(prob_step)

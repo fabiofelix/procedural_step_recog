@@ -102,7 +102,7 @@ class OmniGRU(nn.Module):
     def forward(self, action, h=None, aud=None, objs=None, frame=None, return_last_step=True):
         x = []
 
-        if self.use_action and (self.use_audio or self.use_objects):
+        if self.use_action:
             action = self.action_fc(action)
             if self.use_bn:
                 action = self.action_bn(action.transpose(1, 2)).transpose(1, 2)

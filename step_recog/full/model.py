@@ -65,14 +65,15 @@ class StepPredictor(nn.Module):
       self.h = None
 
     def queue_frame(self, image):
+      X_omnivore = image
+
       if self.head.use_action:
         X_omnivore = self.omnivore.prepare_image(image, bgr2rgb=False)
-        self.omnivore_input_queue.append(X_omnivore)
-      else:  
-        self.omnivore_input_queue.append(image) 
 
-    def has_omni_maxlen(self):
-      return len(self.omnivore_input_queue) == self.omnivore_input_queue.maxlen
+      if len(self.omnivore_input_queue) == 0:
+        self.omnivore_input_queue.extend([X_omnivore] * self.omnivore_input_queue.maxlen) #padding
+      else:  
+        self.omnivore_input_queue.append(X_omnivore) 
 
     def prepare(self, im):
       expected_size=224
