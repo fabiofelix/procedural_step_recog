@@ -105,6 +105,14 @@ The configuration file should also point to the model used for prediction.
 python step_recog/full/visualize.py /path/to/the/video/mp4/file output.mp4 config/M3.yaml
 ```
 
+## **Feature extraction**    
+
+The configuration file should also point to the model used for prediction and to a place to save the features `OUTPUT.LOCATION`.
+
+```
+python tools/test.py --cfg config/M3.yaml
+```
+
 ## **Code structure**
 
 1. Main code: `toos/run_step_recog.py` (function *train_kfold*)

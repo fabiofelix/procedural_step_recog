@@ -338,6 +338,59 @@ def evaluate(model, data_loader, cfg, aggregate_avg = False):
   classes_desc[-1] = "No step"
   save_evaluation(targets, np.argmax(outputs, axis = 1), classes, cfg, label_order = classes_desc)
 
+@torch.no_grad()
+def extract_features(model, data_loader, cfg, aggregate_avg = False):
+  number_classes = cfg.MODEL.OUTPUT_DIM if cfg.MODEL.APPEND_OUT_POSITIONS == 2 else cfg.MODEL.OUTPUT_DIM + 1
+  device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+  model.eval()  
+
+  # assign vocabulary
+  skill_steps = np.array([
+      step
+      for skill in cfg.SKILLS
+      for step in skill['STEPS']
+  ])
+
+  for idx, (action, obj, frame, audio, label, _, _, frame_idx, videos) in enumerate(data_loader, start=1):
+    print("|- Batch", idx)
+    h = model.init_hidden(len(action))
+
+    out, _ = model(action.to(device).float(), h, audio.to(device).float(), obj.to(device).float(), frame.to(device).float(), return_last_step = False)
+    out    = torch.softmax(out[..., :number_classes], dim = -1).cpu().detach().numpy()
+    label  = label.cpu().numpy()
+    frame_idx = frame_idx.cpu().numpy()
+
+    for video_id, video_frames, frame_target, frame_pred, a_feat, o_feat, f_feat, s_feat in zip(videos, frame_idx, label, out, action, obj, frame, audio):
+      print("|--", video_id[0])
+      frames  = []
+      outputs = []
+      output_desc = []
+      targets = []
+      target_desc = []
+      action_feature = []
+      frame_feature = []
+      obj_feature = []
+      sound_feature = []      
+
+      for frame, target, pred, a, o, f, s in zip(video_frames, frame_target, frame_pred, a_feat, o_feat, f_feat, s_feat):
+        if frame > 0:
+          frames.append(frame)
+
+          targets.append(target)
+          target_desc.append("No step" if target >= len(skill_steps) else skill_steps[target])
+
+          outputs.append(pred)
+          step_idx  = np.argmax(pred)
+          output_desc.append("No step" if step_idx >= len(skill_steps) else skill_steps[step_idx])
+
+          action_feature.append(a.numpy())
+          frame_feature.append(f.numpy())
+          obj_feature.append(o.numpy())
+          sound_feature.append(s.numpy())
+
+      np.savez(os.path.join(cfg.OUTPUT.LOCATION, "{}-features.npz".format(video_id[0])), action=np.array(action_feature), frame=np.array(frame_feature), object=np.array(obj_feature), sound=np.array(sound_feature))
+      np.savez(os.path.join(cfg.OUTPUT.LOCATION, "{}-window_label.npz".format(video_id[0])), frame_idx=np.array(frames), label=np.array(targets), label_desc=np.array(target_desc), label_pred=np.array(outputs), label_pred_desc=np.array(output_desc))
+      save_video_evaluation(video_id[0], frames, targets, outputs, cfg)
 
 def plot_history(history, cfg):
   hist_file = open(os.path.join(cfg.OUTPUT.LOCATION, "history.json"), "w")
