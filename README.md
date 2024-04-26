@@ -15,28 +15,22 @@ It can process videos and predict task (skill) steps such as the ones related to
 [![CLIP](https://img.shields.io/badge/CLIP-blue?logo=openai)](https://github.com/openai/CLIP)
 [![ultralytics](https://img.shields.io/badge/ultralytics-green?logo=ultralytics)](https://pypi.org/project/ultralytics/)
 
-[![fire](https://img.shields.io/badge/fire-yellow?logo=fire)](https://pypi.org/project/fire/)
-[![fvcore](https://img.shields.io/badge/fvcore-grey?logo=fvcore)](https://pypi.org/project/fvcore/)
+[![librosa](https://img.shields.io/badge/librosa-red?logo=librosa)](https://pypi.org/project/librosa/)
+[![supervision](https://img.shields.io/badge/supervision-yellow?logo=supervision)](https://pypi.org/project/supervision/)
+[![singuconda](https://img.shields.io/badge/singuconda-brown?logo=singuconda)](https://github.com/beasteers/singuconda)
+
+[![fire](https://img.shields.io/badge/fire-grey?logo=fire)](https://pypi.org/project/fire/)
+[![fvcore](https://img.shields.io/badge/fvcore-blue?logo=fvcore)](https://pypi.org/project/fvcore/)
 [![hydra-core](https://img.shields.io/badge/hydracore-green?logo=hydra-core)](https://pypi.org/project/hydra-core/)
-[![einops](https://img.shields.io/badge/einops-brown?logo=einops)](https://pypi.org/project/einops/)
-[![timm](https://img.shields.io/badge/timm-red?logo=timm)](https://pypi.org/project/timm/)
+[![einops](https://img.shields.io/badge/einops-red?logo=einops)](https://pypi.org/project/einops/)
+[![timm](https://img.shields.io/badge/timm-yellow?logo=timm)](https://pypi.org/project/timm/)
+[![h5py](https://img.shields.io/badge/h5py-brown?logo=h5py)](https://pypi.org/project/h5py/)
+[![wandb](https://img.shields.io/badge/wandb-grey?logo=wandb)](https://pypi.org/project/wandb/)
 
-[![librosa](https://img.shields.io/badge/librosa-blue?logo=librosa)](https://pypi.org/project/librosa/)
-[![h5py](https://img.shields.io/badge/h5py-green?logo=h5py)](https://pypi.org/project/h5py/)
-[![wandb](https://img.shields.io/badge/wandb-brown?logo=wandb)](https://pypi.org/project/wandb/)
-[![simplejson](https://img.shields.io/badge/simplejson-yellow?logo=simplejson)](https://pypi.org/project/simplejson/)
-[![tensorboard](https://img.shields.io/badge/tensorboard-red?logo=tensorboard)](https://pypi.org/project/tensorboard/)  
-
-[![pathtrees](https://img.shields.io/badge/pathtrees-brown?logo=pathtrees)](https://pypi.org/project/pathtree/)
-[![gdown](https://img.shields.io/badge/gdown-yellow?logo=gdown)](https://pypi.org/project/gdown/)   
-[![supervision](https://img.shields.io/badge/supervision-green?logo=supervision)](https://pypi.org/project/supervision/)   
-
-
-
-
-<!-- [![wandb](https://img.shields.io/badge/wandb-brown?logo=wandb)](https://pypi.org/project/wandb/)
-[![pathtrees](https://img.shields.io/badge/pathtrees-brown?logo=pathtrees)](https://pypi.org/project/pathtree/) -->
-
+[![simplejson](https://img.shields.io/badge/simplejson-blue?logo=simplejson)](https://pypi.org/project/simplejson/)
+[![tensorboard](https://img.shields.io/badge/tensorboard-green?logo=tensorboard)](https://pypi.org/project/tensorboard/)  
+[![pathtrees](https://img.shields.io/badge/pathtrees-red?logo=pathtrees)](https://pypi.org/project/pathtree/)
+[![gdown](https://img.shields.io/badge/gdown-yellow?logo=gdown)](https://pypi.org/project/gdown/)
 
 #### **Repo**
 

@@ -5,6 +5,7 @@ AUDIO_PATH=$2/*sqf
 CONFIG_PATH=$3
 DESC=${4:+-"$4"}
 ADD_OVER=""
+ENV_PATH="/scratch/user/environment/cuda11.8"
 
 if [[ ! -z $1 ]]; then
   for img in $IMG_PATH; do
@@ -17,11 +18,7 @@ if [[ ! -z $2 ]]; then
   done
 fi
 
-#echo $ADD_OVER
-#exit
-
 for KFOLD_ITER in {1..10}; do
-#break
 
 sbatch <<EOSBATCH
 #!/bin/bash
@@ -34,11 +31,11 @@ sbatch <<EOSBATCH
 #SBATCH --mail-type=BEGIN,END,ERROR
 #SBATCH --mail-user=$USER@nyu.edu
 
-if [[ ! -x sing  ]]; then
-chmod u+x sing
+if [[ ! -x /$ENV_PATH/sing  ]]; then
+chmod u+x /$ENV_PATH/sing
 fi
 
-./sing $ADD_OVER << EOF
+/$ENV_PATH/sing $ADD_OVER << EOF
 
 python tools/run_step_recog.py --cfg $CONFIG_PATH -i $KFOLD_ITER
 
