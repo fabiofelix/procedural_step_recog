@@ -28,7 +28,10 @@ It can process videos and predict task (skill) steps such as the ones related to
 [![tensorboard](https://img.shields.io/badge/tensorboard-red?logo=tensorboard)](https://pypi.org/project/tensorboard/)  
 
 [![pathtrees](https://img.shields.io/badge/pathtrees-brown?logo=pathtrees)](https://pypi.org/project/pathtree/)
-[![pathtrees](https://img.shields.io/badge/gdown-yellow?logo=gdown)](https://pypi.org/project/gdown/)    
+[![gdown](https://img.shields.io/badge/gdown-yellow?logo=gdown)](https://pypi.org/project/gdown/)   
+[![supervision](https://img.shields.io/badge/supervision-green?logo=supervision)](https://pypi.org/project/supervision/)   
+
+
 
 
 <!-- [![wandb](https://img.shields.io/badge/wandb-brown?logo=wandb)](https://pypi.org/project/wandb/)
