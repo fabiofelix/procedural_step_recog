@@ -27,12 +27,12 @@ def main():
   data   = pd.read_csv(cfg.DATASET.TS_ANNOTATIONS_FILE)
   videos = data.video_id.unique()
 
-  if cfg.TRAIN.CV_TEST_TYPE == "10p":
-    print("Spliting the dataset 90:10 for training/validation and testing")
-    if "M5" in cfg.SKILLS[0]["NAME"]:
-      _, test_videos = train_test_split(videos, test_size=0.10, random_state=1030)  #M5
-    elif "R18" in cfg.SKILLS[0]["NAME"]:
-      _, test_videos = train_test_split(videos, test_size=0.10, random_state=1740) #R18
+  if "M2" in cfg.SKILLS[0]["NAME"]:
+    videos, video_test = train_test_split(videos, test_size=0.10, random_state=2252) #M2      
+  elif "M5" in cfg.SKILLS[0]["NAME"]:
+    videos, video_test = train_test_split(videos, test_size=0.10, random_state=1030) #M5
+  elif "M3" in cfg.SKILLS[0]["NAME"] or "R18" in cfg.SKILLS[0]["NAME"]:
+    videos, video_test = train_test_split(videos, test_size=0.10, random_state=1740) #M3, R18
 
   ts_dataset = Milly_multifeature_v4(cfg, split='test', filter=test_videos)
   ts_data_loader = DataLoader(

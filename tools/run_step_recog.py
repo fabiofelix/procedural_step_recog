@@ -128,161 +128,125 @@ def main():
   if cfg.DATALOADER.NUM_WORKERS > 0:
     torch.multiprocessing.set_start_method('spawn')
 
-  # build the dataset
-  model_name = None
   timeout = 0
 
-  kfold = True
-  grid_test = False
-  testing = False
-
-  if kfold:
-    train_kfold(cfg, args)    
-  else:
-    tr_data_loader = vl_data_loader = vl_dataset = tr_dataset = None
-    if cfg.TRAIN.ENABLE:
-      tr_dataset = Milly_multifeature_v4(cfg, split='train')
-      vl_dataset = Milly_multifeature_v4(cfg, split='validation')
-      tr_data_loader = DataLoader(
-              tr_dataset, 
-              shuffle=False,    #NOTE: Do not put True here. Training shuffle is inside the dataset.
-              batch_size=cfg.TRAIN.BATCH_SIZE,
-              num_workers=cfg.DATALOADER.NUM_WORKERS,
-              collate_fn=collate_fn,
-              drop_last=True,
-              timeout=timeout)
-      vl_data_loader = DataLoader(
-              vl_dataset, 
-              shuffle=False, 
-              batch_size=cfg.TRAIN.BATCH_SIZE,
-              num_workers=cfg.DATALOADER.NUM_WORKERS,
-              collate_fn=collate_fn,
-              drop_last=False,
-              timeout=timeout)
-  
-##    if grid_test:  
-##      grid_search(tr_data_loader, vl_data_loader, cfg)
-##    elif testing:  
-##      test_data(tr_data_loader, cfg)
-##      test_data(vl_data_loader, cfg)      
+  if cfg.TRAIN.ENABLE:
+    if cfg.TRAIN.USE_CROSS_VALIDATION:
+      train_kfold(cfg, args)
     else:
-      start_time = time.time()
-      model_name = train(tr_data_loader, vl_data_loader,cfg)   
-      print("Training time: ", time.time() - start_time)
+      train_kfold_step(cfg)
+  else:
+    model, _ = build_model(cfg)      
+    weights  = torch.load(os.path.join(cfg.OUTPUT.LOCATION, 'step_gru_best_model.pt'))
+    model.load_state_dict(model.update_version(weights))      
 
-      del vl_data_loader
-      del tr_data_loader
-      del vl_dataset
-      del tr_dataset
+    ts_data_loader = DataLoader(
+            Milly_multifeature_v4(cfg, split='test'), 
+            shuffle=False, 
+            batch_size=cfg.TRAIN.BATCH_SIZE,
+            num_workers=cfg.DATALOADER.NUM_WORKERS,
+            collate_fn=collate_fn,
+            drop_last=False,
+            timeout=timeout)
 
-      if cfg.EVAL.ENABLE:
-        ts_dataset = Milly_multifeature_v4(cfg, split='test')
-        ts_data_loader = DataLoader(
-                ts_dataset, 
-                shuffle=False, 
-                batch_size=cfg.TRAIN.BATCH_SIZE,
-                num_workers=cfg.DATALOADER.NUM_WORKERS,
-                collate_fn=collate_fn,
-                drop_last=False,
-                timeout=timeout)          
-
-        print('Loading the best model to evaluate')
-        model, _ = build_model(cfg)      
-        weights = torch.load(cfg.MODEL.OMNIGRU_CHECKPOINT_URL if model_name is None else model_name)
-        model.load_state_dict(model.update_version(weights))
-
-        start_time = time.time()
-
-        evaluate(model,ts_data_loader,cfg)
-          
-        print("Evaluating time: ", time.time() - start_time)
+    evaluate(model, ts_data_loader, cfg)
 
 def train_kfold(cfg, args, k = 10):
-  timeout = 0
   kf_train_val = KFold(n_splits = k)
 
   data   = pd.read_csv(cfg.DATASET.TR_ANNOTATIONS_FILE)
   videos = data.video_id.unique()
   main_path = cfg.OUTPUT.LOCATION
 
-  test_videos = None
+  video_test = None
 
   if cfg.TRAIN.CV_TEST_TYPE == "10p":
     print("Spliting the dataset 90:10 for training/validation and testing")
-    if "M5" in cfg.SKILLS[0]["NAME"]:
-      videos, test_videos = train_test_split(videos, test_size=0.10, random_state=1030)  #M5
-    elif "R18" in cfg.SKILLS[0]["NAME"]:
-      videos, test_videos = train_test_split(videos, test_size=0.10, random_state=1740) #R18
+
+    if "M2" in cfg.SKILLS[0]["NAME"]:
+      videos, video_test = train_test_split(videos, test_size=0.10, random_state=2252) #M2      
+    elif "M5" in cfg.SKILLS[0]["NAME"]:
+      videos, video_test = train_test_split(videos, test_size=0.10, random_state=1030) #M5
+    elif "M3" in cfg.SKILLS[0]["NAME"] or "R18" in cfg.SKILLS[0]["NAME"]:
+      videos, video_test = train_test_split(videos, test_size=0.10, random_state=1740) #M3, R18
 
   for idx, (train_idx, val_idx) in enumerate(kf_train_val.split(videos), 1):    
     if args.forced_iteration is None or idx == args.forced_iteration:
       print("==================== CROSS VALIDATION fold {:02d} ====================".format(idx))      
+
       video_train = videos[train_idx]
       video_val   = videos[val_idx]
-          
-      tr_dataset = Milly_multifeature_v4(cfg, split='train', filter=video_train)
-      vl_dataset = Milly_multifeature_v4(cfg, split='validation', filter=video_val)
 
-      tr_data_loader = DataLoader(
-              tr_dataset, 
-              shuffle=False, 
-              batch_size=cfg.TRAIN.BATCH_SIZE,
-              num_workers=cfg.DATALOADER.NUM_WORKERS,
-              collate_fn=collate_fn,
-              drop_last=True,
-              timeout=timeout)
-      vl_data_loader = DataLoader(
-              vl_dataset, 
-              shuffle=False, 
-              batch_size=cfg.TRAIN.BATCH_SIZE,
-              num_workers=cfg.DATALOADER.NUM_WORKERS,
-              collate_fn=collate_fn,
-              drop_last=False,
-              timeout=timeout)
+      train_kfold_step(cfg, os.path.join(main_path, "fold_{:02d}".format(idx) ), video_train, video_val, video_test)
 
-      train_path = os.path.join(main_path, "fold_{:02d}".format(idx) )
-      val_path   = os.path.join(train_path, "validation" )
-      test_path  = os.path.join(train_path, "test" )
+def train_kfold_step(cfg, main_path = None, video_train = None, video_val = None, video_test = None):
+  timeout = 0
 
-      if not os.path.isdir(val_path):
-        os.makedirs( val_path )
-      if not os.path.isdir(test_path):  
-        os.makedirs( test_path )
+  tr_dataset = Milly_multifeature_v4(cfg, split='train', filter=video_train)
+  vl_dataset = Milly_multifeature_v4(cfg, split='validation', filter=video_val)  
+
+  tr_data_loader = DataLoader(
+          tr_dataset, 
+          shuffle=False, 
+          batch_size=cfg.TRAIN.BATCH_SIZE,
+          num_workers=cfg.DATALOADER.NUM_WORKERS,
+          collate_fn=collate_fn,
+          drop_last=True,
+          timeout=timeout)
+  vl_data_loader = DataLoader(
+          vl_dataset, 
+          shuffle=False, 
+          batch_size=cfg.TRAIN.BATCH_SIZE,
+          num_workers=cfg.DATALOADER.NUM_WORKERS,
+          collate_fn=collate_fn,
+          drop_last=False,
+          timeout=timeout)  
 
 #      pdb.set_trace()
-      cfg.OUTPUT.LOCATION = train_path
-      model_name = train(tr_data_loader, vl_data_loader, cfg)  
+  if main_path is None:
+    main_path = cfg.OUTPUT.LOCATION
+  else:  
+    cfg.OUTPUT.LOCATION = main_path
+
+  val_path  = os.path.join(main_path, "validation" )
+  test_path = os.path.join(main_path, "test" )
+
+  if not os.path.isdir(val_path):
+    os.makedirs(val_path)
+  if not os.path.isdir(test_path):  
+    os.makedirs(test_path)    
+
+  model_name = train(tr_data_loader, vl_data_loader, cfg)  
 #      model_name = os.path.join(cfg.OUTPUT.LOCATION, 'step_gru_best_model.pt')        
 
-      del tr_data_loader
-      del tr_dataset          
+  del tr_data_loader
+  del tr_dataset    
 
-      model, _ = build_model(cfg)      
-      weights  = torch.load(model_name)
-      model.load_state_dict(model.update_version(weights))      
+  model, _ = build_model(cfg)      
+  weights  = torch.load(model_name)
+  model.load_state_dict(model.update_version(weights))      
 
-      cfg.OUTPUT.LOCATION = val_path
-      evaluate(model, vl_data_loader, cfg)      
+  cfg.OUTPUT.LOCATION = val_path
+  evaluate(model, vl_data_loader, cfg)      
 
-      del vl_data_loader
-      del vl_dataset
+  del vl_data_loader
+  del vl_dataset      
 
-      ts_dataset = Milly_multifeature_v4(cfg, split='test', filter = test_videos)
-      ts_data_loader = DataLoader(
-              ts_dataset, 
-              shuffle=False, 
-              batch_size=cfg.TRAIN.BATCH_SIZE,
-              num_workers=cfg.DATALOADER.NUM_WORKERS,
-              collate_fn=collate_fn,
-              drop_last=False,
-              timeout=timeout)
-          
-      cfg.OUTPUT.LOCATION = test_path
-      evaluate(model, ts_data_loader, cfg)
+  ts_dataset = Milly_multifeature_v4(cfg, split='test', filter = video_test)
+  ts_data_loader = DataLoader(
+          ts_dataset, 
+          shuffle=False, 
+          batch_size=cfg.TRAIN.BATCH_SIZE,
+          num_workers=cfg.DATALOADER.NUM_WORKERS,
+          collate_fn=collate_fn,
+          drop_last=False,
+          timeout=timeout)
+      
+  cfg.OUTPUT.LOCATION = test_path
+  evaluate(model, ts_data_loader, cfg)
 
-      del ts_data_loader
-      del ts_dataset                    
-
+  del ts_data_loader
+  del ts_dataset                                                 
 
 if __name__ == "__main__":
     main()

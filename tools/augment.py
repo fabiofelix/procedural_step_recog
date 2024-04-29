@@ -128,6 +128,7 @@ class GroupRandomHorizontalFlip(RandomGroup):
     def worker(self, img):
         return img.transpose(Image.FLIP_LEFT_RIGHT)
 
+## https://github.com/okankop/vidaug/blob/master/vidaug/augmentors/intensity.py
 class GroupSaltPepper(RandomGroup):
     def __init__(self, ratio, **kw):
       super().__init__(**kw)  
@@ -149,6 +150,25 @@ class GroupSaltPepper(RandomGroup):
       img    = np.where(pepper == 0, 0, img)
 
       return Image.fromarray(img)
+
+## https://arxiv.org/pdf/2211.04888
+class GroupMask(RandomGroup):
+    def __init__(self, patch_size, mask_center, **kw):
+      super().__init__(**kw)    
+
+      self.patch_size_idx = patch_size().astype(int) if callable(patch_size) else patch_size
+      self.mask_center    = mask_center().astype(int) if callable(mask_center) else mask_center
+
+    def worker(self, img):
+      img  = np.array(img)
+
+      patch_size = [img.shape[0] // 5, img.shape[0] // 4, img.shape[0] // 3] 
+      ps = patch_size[self.patch_size_idx]
+      center_x, center_y = self.mask_center
+      img[max(0, center_x - ps // 2):(center_x + ps // 2), max(0, center_y - ps // 2):(center_y + ps // 2), :] = 0
+
+      return Image.fromarray(img.astype(np.uint8))         
+
 
 class Thumbnail:
     def __init__(self, size, **kw):
