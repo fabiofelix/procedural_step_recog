@@ -5,9 +5,9 @@ MODEL:
   YOLO_CHECKPOINT_URL: '/home/user/models/bbn_yolo_R18.pt'  
 
 DATASET:
-  TR_ANNOTATIONS_FILE: "/home/user/labels/BBN-R18_with_epic-structure_V2_FPS.csv"
-  VL_ANNOTATIONS_FILE: "/home/user/labels/BBN-R18_with_epic-structure_V2_FPS.csv"
-  TS_ANNOTATIONS_FILE: "/home/user/labels/BBN-R18_with_epic-structure_V2_FPS.csv"
+  TR_ANNOTATIONS_FILE: "/home/user/labels/R18_Alabama+BBN_videos.csv"
+  VL_ANNOTATIONS_FILE: "/home/user/labels/R18_Alabama+BBN_videos.csv"
+  TS_ANNOTATIONS_FILE: "/home/user/labels/R18_Alabama+BBN_videos.csv"
 
 OUTPUT:
   LOCATION: "/home/user/output"    

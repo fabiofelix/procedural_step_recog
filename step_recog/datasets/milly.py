@@ -161,7 +161,6 @@ class Milly_multifeature(torch.utils.data.Dataset):
                 aux[-2:] = [iframe/len(nparange),(len(nparange)-iframe)/len(nparange)]
                 labels_t.append(aux)
                 wins.append(win_size)
-
             if self.time_augs:
                 nexttaug = self.rng.choice(3,replace=False) # 4 possible augmentations
             else:
@@ -588,6 +587,7 @@ class Milly_multifeature_v4(Milly_multifeature):
       self.omnivore.eval()
 
     self.sound_cache = deque(maxlen=5)
+    self.frame_cache = {}
 
     if self.cfg.MODEL.USE_AUDIO:
       self.slowfast = SlowFast(self.slowfast_cfg)
@@ -786,7 +786,7 @@ class Milly_multifeature_v4(Milly_multifeature):
 
     progress = tqdm.tqdm(video_ids, total=len(video_ids), desc = "Video")
 
-    for v in video_ids:     
+    for v in video_ids:   
       progress.update(1)
 
       vid_ann = self.annotations[self.annotations.video_id==v]
@@ -866,21 +866,37 @@ class Milly_multifeature_v4(Milly_multifeature):
 
 
   ##Apply the same augmentation to all windows in a video_id  
-  def augment_frames(self, frames, video_id):
+  def augment_frames(self, frames, frame_ids, video_id):
     if self.image_augs:
       if video_id in self.augment_configs:
         if self.augment_configs[video_id] is not None:
           aug = self.augment_configs[video_id]
+          new_frames = []
 
-          return [ aug(frame)[0].numpy() for frame in frames  ]
+          for id, frame in zip(frame_ids, frames):
+            if self.frame_cache[id]["new"]:
+              self.frame_cache[id]["new"]   = False
+              self.frame_cache[id]["frame"] = aug(frame)[0].numpy()
+
+            new_frames.append(self.frame_cache[id]["frame"])
+
+          return new_frames          
       else:  
         self.augment_configs[video_id] = None
 
         if self.rng.choice([True, False], p = [self.cfg.DATASET.IMAGE_AUGMENTATION_PERCENTAGE, 1.0 - self.cfg.DATASET.IMAGE_AUGMENTATION_PERCENTAGE]):
           aug = get_augmentation(None, verbose = False)
           self.augment_configs[video_id] = aug
+          new_frames = []
 
-          return [ aug(frame)[0].numpy() for frame in frames  ]
+          for id, frame in zip(frame_ids, frames):
+            if self.frame_cache[id]["new"]:
+              self.frame_cache[id]["new"]   = False
+              self.frame_cache[id]["frame"] = aug(frame)[0].numpy()
+
+            new_frames.append(self.frame_cache[id]["frame"])
+
+          return new_frames  
 
     return frames
 
@@ -909,6 +925,7 @@ class Milly_multifeature_v4(Milly_multifeature):
 
   def _load_frames(self, window):
     window_frames = []
+    window_frame_ids = []
 
     #Load window frames
     for frame_idx in range(window["start_frame"], window["stop_frame"] + 1):
@@ -923,23 +940,33 @@ class Milly_multifeature_v4(Milly_multifeature):
           
           https://pillow.readthedocs.io/en/stable/_modules/PIL/Image.html#Image.convert
         """
-        frame = cv2.imread(frame_path)
-        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        frame = self._resize_img(frame)
+
+        frame_id = os.path.basename(frame_path).split(".")[0]
+
+        if frame_id in self.frame_cache:
+          frame = self.frame_cache[frame_id]["frame"]
+        else:  
+          frame = cv2.imread(frame_path)
+          frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+          frame = self._resize_img(frame)
+          self.frame_cache[frame_id] = {"frame": frame, "new": True}
         window_frames.append(frame)
+        window_frame_ids.append(frame_id)
 
     if len(window_frames) == 0:
       raise Exception("No frame found inside [{}/{}] in the range [{}, {}]".format(self.data_path, window["video_id"], window["start_frame"], window["stop_frame"]))    
 
     #Padding to fill the win_size (see _construct_loader) 
     if len(window_frames) <  window['window_frame_size']:
-      pad_frame = window_frames[0] 
+      pad_frame = window_frames[0]
+      pad_frame_id = window_frame_ids[0] 
       ## pad_frame = np.zeros(window_frames[0].shape, dtype = window_frames[0].dtype)
       ## pad_frame = np.ones(window_frames[0].shape, dtype = window_frames[0].dtype)
 
-      window_frames = [pad_frame] * (window['window_frame_size'] - len(window_frames)) + window_frames
+      window_frames    = [pad_frame] * (window['window_frame_size'] - len(window_frames)) + window_frames
+      window_frame_ids = [pad_frame_id] * (window['window_frame_size'] - len(window_frame_ids)) + window_frame_ids
 
-    return window_frames
+    return window_frames, window_frame_ids
 
   def _extract_img_features(self, window_frames):
     frame = window_frames[-1]
@@ -998,21 +1025,23 @@ class Milly_multifeature_v4(Milly_multifeature):
     window_step_label = []
     window_position_label = []
     window_stop_frame = []
+    self.augment_configs = {}
+    self.frame_cache = {}
 
     for window in video["windows"]:
       window_step_label.append(window["label"])
       window_position_label.append(window["label_pos"])
       window_stop_frame.append(window["stop_frame"])
 
-      window_frames = self._load_frames(window)
-      window_frames = self.augment_frames(window_frames, window["video_id"])
+      window_frames, window_frame_ids = self._load_frames(window)
+      window_frames = self.augment_frames(window_frames, window_frame_ids, window["video_id"])
 
       if self.cfg.MODEL.USE_OBJECTS: 
         obj_embeddings, frame_embeddings = self._extract_img_features(window_frames)
         video_obj.append(obj_embeddings)
         video_frame.append(frame_embeddings)
 
-      if self.cfg.MODEL.USE_ACTION:      
+      if self.cfg.MODEL.USE_ACTION:
         action_embeddings = self._extract_act_features(window_frames)
         video_act.append(action_embeddings)
 

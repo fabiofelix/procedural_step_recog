@@ -96,38 +96,17 @@ def train_step(epoch, model, criterion, criterion_t, optimizer, loader, is_train
     label   = label.to(out.device)
     label_t = label_t.to(out.device)
 
-    if flatten_out:
-      out_t   = torch.softmax(out[..., number_classes:], dim = -1)  #regression of time positions. Limits the results to [0, 1] range
-      out     = out[..., :number_classes]                           #classification of steps. CrossEntropyLoss consumes logits    
+    out_t  = torch.softmax(out[..., number_classes:], dim = -1)  #regression of time positions. Limits the results to [0, 1] range
+    out    = out[..., :number_classes]                           #classification of steps. CrossEntropyLoss consumes logits          
 
-      out     = torch.flatten(out, start_dim = 0, end_dim = 1)
-      out_t   = torch.flatten(out_t, start_dim = 0, end_dim = 1)
-      label   = torch.flatten(label, start_dim = 0, end_dim = 1)
-      label_t = torch.flatten(label_t, start_dim = 0, end_dim = 1)  
-
-      out_masked = out.float()
-      label_masked = label.float()
-    else:  
-      if len(out.shape) == 2:
-        out_t  = torch.softmax(out[..., None, number_classes:], dim = -1)  #regression of time positions. Limits the results to [0, 1] range
-        out    = out[..., None, :number_classes]                           #classification of steps. CrossEntropyLoss consumes logits    
-      else:  
-        out_t  = torch.softmax(out[..., number_classes:], dim = -1)  #regression of time positions. Limits the results to [0, 1] range
-        out    = out[..., :number_classes]                           #classification of steps. CrossEntropyLoss consumes logits          
-
-      out_masked   = out * mask
-      label_masked = mask * label.float()      
+    out_masked   = out * mask
+    label_masked = mask * label.float()      
 
 ##   https://pytorch.org/docs/stable/generated/torch.nn.CrossEntropyLoss.html
 ##   https://discuss.pytorch.org/t/rnn-many-to-many-classification-with-cross-entropy-loss/106197
     class_loss = criterion(out_masked.transpose(1, 2), label_masked.transpose(1, 2))
-
-    if flatten_out:
-      pos_loss = criterion_t(out_t.float(), label_t.float())    
-    else:  
-      pos_loss = criterion_t(out_t.float() * mask, mask * label_t.float())
-
-    loss = class_loss + pos_loss
+    pos_loss   = criterion_t(out_t.float() * mask, mask * label_t.float())
+    loss       = class_loss + pos_loss
 
     if is_training:
       loss.backward()
@@ -140,24 +119,23 @@ def train_step(epoch, model, criterion, criterion_t, optimizer, loader, is_train
     out_masked   = torch.argmax(torch.softmax(out_masked, dim = -1), axis = -1)
     label_masked = torch.argmax(label_masked, axis = -1)
 
-    if flatten_out:
-      sum_b_acc += my_balanced_accuracy_score(label_masked.cpu().numpy(), out_masked.cpu().numpy())    
-      sum_acc   += accuracy_score(label_masked.cpu().numpy(), out_masked.cpu().numpy())
-    else:  
-      mask         = torch.flatten(mask).cpu().numpy()  
-      label_masked = torch.flatten(label_masked).cpu().numpy()  
-      out_masked   = torch.flatten(out_masked).cpu().numpy()
+    mask         = torch.flatten(mask).cpu().numpy()  
+    label_masked = torch.flatten(label_masked).cpu().numpy()  
+    out_masked   = torch.flatten(out_masked).cpu().numpy()
 
-      label_masked_aux = []
-      out_masked_aux = []
+    label_masked_aux = []
+    out_masked_aux = []
 
-      for m, l, o in zip(mask, label_masked, out_masked):
-        if m > 0:
-          label_masked_aux.append(l)
-          out_masked_aux.append(o)
+    for m, l, o in zip(mask, label_masked, out_masked):
+      if m > 0:
+        label_masked_aux.append(l)
+        out_masked_aux.append(o)
 
-      sum_b_acc += my_balanced_accuracy_score(np.array(label_masked_aux), np.array(out_masked_aux))    
-      sum_acc   += accuracy_score(np.array(label_masked_aux), np.array(out_masked_aux))      
+#      pdb.set_trace()
+    label_masked_aux = np.array(label_masked_aux)
+    out_masked_aux = np.array(out_masked_aux)
+    sum_acc   += accuracy_score(label_masked_aux, out_masked_aux)      
+    sum_b_acc += weighted_accuracy(label_masked_aux, out_masked_aux, number_classes)
 
     if is_training:
       progress.update(1)
@@ -320,7 +298,7 @@ def evaluate(model, data_loader, cfg, aggregate_avg = False):
       aux_outputs = []
 
       for frame, target, pred in zip(video_frames, frame_target, frame_pred):
-        if frame > 0:
+        if frame > 0: #it's equal to test the mask value, like in train_step
           aux_frame.append(frame)
           aux_targets.append(target)
           aux_outputs.append(pred)
@@ -464,12 +442,14 @@ def plot_data(train, val, xlabel = None, ylabel = None, mark_best = None, palett
     plt.axvline(x = mark_best, color = palette["grey"])
 
 def save_evaluation(expected, predicted, classes, cfg, label_order = None, normalize = "true", file_name = "confusion_matrix.png", pad = None):
+  number_classes = cfg.MODEL.OUTPUT_DIM if cfg.MODEL.APPEND_OUT_POSITIONS == 2 else cfg.MODEL.OUTPUT_DIM + 1
   file = open(os.path.join(cfg.OUTPUT.LOCATION, "metrics.txt"), "w")
 
   try:
     file.write(classification_report(expected, predicted, zero_division = 0, labels = classes, target_names = label_order)) 
     file.write("\n\n")     
     file.write("Categorical accuracy: {:.2f}\n".format(accuracy_score(expected, predicted)))
+    file.write("Weighted accuracy: {:.2f}\n".format(weighted_accuracy(expected, predicted, number_classes)))
     file.write("Balanced accuracy: {:.2f}\n".format(my_balanced_accuracy_score(expected, predicted)))
   finally:
     file.close() 
@@ -553,4 +533,13 @@ def my_balanced_accuracy_score(y_true, y_pred, *, sample_weight=None, adjusted=F
         score -= chance
         score /= 1 - chance
     return score  
+
+def weighted_accuracy(y_true, y_pred, number_classes):
+  sample_weight = np.ones(y_true.shape)
+
+  for cl in range(number_classes):
+    count = np.sum(y_true == cl)
+    sample_weight[y_true == cl] /= count  
+
+  return accuracy_score(y_true, y_pred, sample_weight = np.array(sample_weight))    
 

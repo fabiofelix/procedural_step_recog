@@ -137,11 +137,15 @@ def main():
       train_kfold_step(cfg)
   else:
     model, _ = build_model(cfg)      
-    weights  = torch.load(os.path.join(cfg.OUTPUT.LOCATION, 'step_gru_best_model.pt'))
-    model.load_state_dict(model.update_version(weights))      
+    weights  = torch.load(cfg.MODEL.OMNIGRU_CHECKPOINT_URL)
+    model.load_state_dict(model.update_version(weights))  
+
+    data   = pd.read_csv(cfg.DATASET.TS_ANNOTATIONS_FILE)
+    videos = data.video_id.unique()
+    _, video_test = my_train_test_split(cfg, videos)    
 
     ts_data_loader = DataLoader(
-            Milly_multifeature_v4(cfg, split='test'), 
+            Milly_multifeature_v4(cfg, split='test', filter = video_test), 
             shuffle=False, 
             batch_size=cfg.TRAIN.BATCH_SIZE,
             num_workers=cfg.DATALOADER.NUM_WORKERS,
@@ -151,13 +155,7 @@ def main():
 
     evaluate(model, ts_data_loader, cfg)
 
-def train_kfold(cfg, args, k = 10):
-  kf_train_val = KFold(n_splits = k)
-
-  data   = pd.read_csv(cfg.DATASET.TR_ANNOTATIONS_FILE)
-  videos = data.video_id.unique()
-  main_path = cfg.OUTPUT.LOCATION
-
+def my_train_test_split(cfg, videos):
   video_test = None
 
   if cfg.TRAIN.CV_TEST_TYPE == "10p":
@@ -165,10 +163,23 @@ def train_kfold(cfg, args, k = 10):
 
     if "M2" in cfg.SKILLS[0]["NAME"]:
       videos, video_test = train_test_split(videos, test_size=0.10, random_state=2252) #M2      
+    elif "M3" in cfg.SKILLS[0]["NAME"]:
+      videos, video_test = train_test_split(videos, test_size=0.10, random_state=2359) #M3  1740: only with BBN pressure_videos.zip
     elif "M5" in cfg.SKILLS[0]["NAME"]:
-      videos, video_test = train_test_split(videos, test_size=0.10, random_state=1030) #M5
-    elif "M3" in cfg.SKILLS[0]["NAME"] or "R18" in cfg.SKILLS[0]["NAME"]:
-      videos, video_test = train_test_split(videos, test_size=0.10, random_state=1740) #M3, R18
+      videos, video_test = train_test_split(videos, test_size=0.10, random_state=2359) #M5  1030: only with BBN 041624.zip
+    elif "R18" in cfg.SKILLS[0]["NAME"]:      
+      videos, video_test = train_test_split(videos, test_size=0.10, random_state=1740) #R18
+
+  return videos, video_test
+
+def train_kfold(cfg, args, k = 10):
+  # timeout = 0
+  kf_train_val = KFold(n_splits = k)
+
+  data   = pd.read_csv(cfg.DATASET.TR_ANNOTATIONS_FILE)
+  videos = data.video_id.unique()
+  main_path = cfg.OUTPUT.LOCATION
+  videos, video_test = my_train_test_split(cfg, videos)      
 
   for idx, (train_idx, val_idx) in enumerate(kf_train_val.split(videos), 1):    
     if args.forced_iteration is None or idx == args.forced_iteration:

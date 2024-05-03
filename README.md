@@ -54,12 +54,12 @@ The preprocessing steps are the extraction of video frames and sound. Basically,
 
   1.1 Extracting frames or sound
   ```
-  bash scripts/extract_frames.sh /path/to/the/video/mp4/files /path/to/save/the/frames/ SKILL frame true 
+  bash scripts/extract_frames.sh /path/to/the/skill desc/Data /path/to/save/the/frames/ SKILL frame true 
 
-  bash scripts/extract_frames.sh /path/to/the/video/mp4/files /path/to/save/the/sound/ SKILL sound true 
+  bash scripts/extract_frames.sh /path/to/the/skill desc/Data /path/to/save/the/sound/ SKILL sound true 
   ```
 
-  1.2 `/path/to/the/video/mp4/files` should be structure such as
+  1.2 `/path/to/the/skill desc/` should be structure such as
 
   ```
    |- skill desc
@@ -80,7 +80,9 @@ The preprocessing steps are the extraction of video frames and sound. Basically,
   bash scripts/extract_frames.sh /path/to/the/video/mp4/files /path/to/save/the/sound/ SKILL sound false  
   ```  
 
->Note: to execute this script, consider to use singularity with the image *ubuntu-22.04.3.sif*  or *rockylinux-9.2.sif* both available on the NYU HPC.
+> [!NOTE] 
+> to execute this script, consider to use singularity with the image *ubuntu-22.04.3.sif*  or *rockylinux-9.2.sif* both available on the NYU HPC.
+> if you are not using singularity, remember to install *ffmeg*
 
 ## **Training and making predictions**  
 
