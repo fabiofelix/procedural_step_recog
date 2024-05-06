@@ -54,12 +54,14 @@ class OmniGRU(nn.Module):
         if self.use_action:
           gru_input_dim += project_dim
           self.action_fc = nn.Linear(action_size, project_dim)
+          self.action_drop_out = nn.Dropout(cfg.MODEL.DROP_OUT)
           if self.use_bn: 
             self.action_bn = nn.BatchNorm1d(project_dim)
 
         if self.use_audio:
           gru_input_dim += project_dim
           self.audio_fc = nn.Linear(audio_size, project_dim)
+          self.audio_drop_out = nn.Dropout(cfg.MODEL.DROP_OUT)
           if self.use_bn: 
               self.aud_bn = nn.BatchNorm1d(project_dim)
 
@@ -68,6 +70,7 @@ class OmniGRU(nn.Module):
           self.obj_proj   = nn.Linear(img_size, project_dim)    
           self.frame_proj = nn.Linear(img_size, project_dim)  
           self.obj_fc     = nn.Linear(project_dim, project_dim)
+          self.obj_drop_out = nn.Dropout(cfg.MODEL.DROP_OUT)
           if self.use_bn: 
             self.obj_bn = nn.BatchNorm1d(project_dim)            
 
@@ -91,6 +94,7 @@ class OmniGRU(nn.Module):
             if self.use_bn:
                 action = self.action_bn(action.transpose(1, 2)).transpose(1, 2)
             action = self.relu(action)
+            action = self.action_drop_out(action)
             x.append(action)
 
         if self.use_audio:
@@ -98,6 +102,7 @@ class OmniGRU(nn.Module):
             if self.use_bn:
                 aud = self.aud_bn(aud.transpose(1, 2)).transpose(1, 2)
             aud = self.relu(aud)
+            aud = self.audio_drop_out(aud)            
             x.append(aud)
 
         if self.use_objects:
@@ -124,6 +129,7 @@ class OmniGRU(nn.Module):
             if self.use_bn:
               obj_in = self.obj_bn(obj_in.transpose(1, 2)).transpose(1, 2)
             obj_in = self.relu(obj_in)
+            obj_in = self.obj_drop_out(obj_in)                        
             x.append(obj_in)
 
         x = torch.concat(x, -1) if len(x) > 1 else x[0]            

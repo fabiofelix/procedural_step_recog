@@ -4,11 +4,13 @@
 This is the code for training and evaluation of the preception models built on the [PTG project](https://github.com/VIDA-NYU/ptg-server-ml) and developed by NYU.
 It can process videos and predict task (skill) steps such as the ones related to emergency medical services.
 
->Note: this are the used skills:  Trauma Assessment (M1), Apply tourniquet (M2), Pressure Dressing (M3), X-Stat (M5), and Apply Chest seal (R18)
+> [!NOTE] 
+> This are the used skills:  Trauma Assessment (M1), Apply tourniquet (M2), Pressure Dressing (M3), X-Stat (M5), and Apply Chest seal (R18)
 
 ## **Install**
 
->Note: all this process is working in the [NYU Greene HPC](https://sites.google.com/nyu.edu/nyu-hpc/hpc-systems/greene)
+> [!NOTE] 
+> All this process is working in the [NYU Greene HPC](https://sites.google.com/nyu.edu/nyu-hpc/hpc-systems/greene)
 
 #### **Dependences**
 
@@ -82,6 +84,7 @@ The preprocessing steps are the extraction of video frames and sound. Basically,
 
 > [!NOTE] 
 > to execute this script, consider to use singularity with the image *ubuntu-22.04.3.sif*  or *rockylinux-9.2.sif* both available on the NYU HPC.
+>
 > if you are not using singularity, remember to install *ffmeg*
 
 ## **Training and making predictions**  
@@ -93,8 +96,10 @@ If you are evaluating the models, the config file should point to the model used
 ```
 bash scripts/omnimix.sh /path/to/the/frames/squash/files /path/to/the/sound/squash/files config/M2.yaml
 ```
-
->Note: this code consider the squash files previously created.
+> [!NOTE] 
+> this code consider the squash files previously created.
+>
+> it is also expecting that use of the singuconda
 
 ## **Visualizing the results**    
 

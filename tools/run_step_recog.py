@@ -161,14 +161,16 @@ def my_train_test_split(cfg, videos):
   if cfg.TRAIN.CV_TEST_TYPE == "10p":
     print("Spliting the dataset 90:10 for training/validation and testing")
 
-    if "M2" in cfg.SKILLS[0]["NAME"]:
-      videos, video_test = train_test_split(videos, test_size=0.10, random_state=2252) #M2      
+    if "M1" in cfg.SKILLS[0]["NAME"]:    
+      videos, video_test = train_test_split(videos, test_size=0.10, random_state=2343) #M1      
+    elif "M2" in cfg.SKILLS[0]["NAME"]:
+      videos, video_test = train_test_split(videos, test_size=0.10, random_state=1007) #M2  2252: only with BBN 3_tourns_122023.zip    
     elif "M3" in cfg.SKILLS[0]["NAME"]:
       videos, video_test = train_test_split(videos, test_size=0.10, random_state=2359) #M3  1740: only with BBN pressure_videos.zip
     elif "M5" in cfg.SKILLS[0]["NAME"]:
       videos, video_test = train_test_split(videos, test_size=0.10, random_state=2359) #M5  1030: only with BBN 041624.zip
     elif "R18" in cfg.SKILLS[0]["NAME"]:      
-      videos, video_test = train_test_split(videos, test_size=0.10, random_state=1740) #R18
+      videos, video_test = train_test_split(videos, test_size=0.10, random_state=2343) #R18 1740: only with BBN seal_videos.zip
 
   return videos, video_test
 

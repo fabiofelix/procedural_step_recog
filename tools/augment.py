@@ -214,6 +214,7 @@ def get_augmentation(input_size=600, verbose=True):
             verbose=verbose
         ),
         GroupSaltPepper(ratio=randomwalk(900, 1000, 10) ),
+        GroupMask(p= np.random.choice([True, False], p = [0.5, 0.5]), patch_size=randomwalk(0, 3, 1), mask_center=randomwalk(0, 224, 1, size=(2, ))),
         Stack(),
     ])
 
