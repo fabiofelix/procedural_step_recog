@@ -2,7 +2,7 @@
 # **Step recognition**
 
 This is the code for training and evaluation of the preception models built on the [PTG project](https://github.com/VIDA-NYU/ptg-server-ml) and developed by NYU.
-It can process videos and predict task (skill) steps such as the ones related to emergency medical services.
+It can process videos and predict task (skill) steps such as the ones related to tactical field care.
 
 > [!NOTE] 
 > This are the used skills:  Trauma Assessment (M1), Apply tourniquet (M2), Pressure Dressing (M3), X-Stat (M5), and Apply Chest seal (R18)
@@ -77,9 +77,9 @@ The preprocessing steps are the extraction of video frames and sound. Basically,
 
   1.3 Using [squash](https://sites.google.com/nyu.edu/nyu-hpc/hpc-systems/hpc-storage/data-management/squash-file-system-and-singularity) to compact the files.
   ```
-  bash scripts/extract_frames.sh /path/to/the/video/mp4/files /path/to/save/the/frames/ SKILL frame false 
+  bash scripts/extract_frames.sh /path/to/the/skill desc/Data /path/to/save/the/frames/ SKILL frame false 
 
-  bash scripts/extract_frames.sh /path/to/the/video/mp4/files /path/to/save/the/sound/ SKILL sound false  
+  bash scripts/extract_frames.sh /path/to/the/skill desc/Data /path/to/save/the/sound/ SKILL sound false  
   ```  
 
 > [!NOTE] 
@@ -87,11 +87,27 @@ The preprocessing steps are the extraction of video frames and sound. Basically,
 >
 > if you are not using singularity, remember to install *ffmeg*
 
+  1.5 If you want to run out the NYU HPC execute this script but do not forget to install *ffmeg*
+  ```
+  bash scripts/out_hpc/extract_frames.sh /path/to/the/skill desc/Data /path/to/save/the/frames/ SKILL frame
+
+  bash scripts/out_hpc/extract_frames.sh /path/to/the/skill desc/Data /path/to/save/the/sound/ SKILL sound
+  ```  
+
 ## **Training and making predictions**  
 
 Check the configuration files under `config` folder.
-The field `TRAIN.ENABLE` should be *True* for training and *False* for prediction.
-If you are evaluating the models, the config file should point to the model used for predictions `MODEL.OMNIGRU_CHECKPOINT_URL`.
+
+  2.1 The field `TRAIN.ENABLE` should be *True* for training and *False* for prediction.
+
+  2.2 Change the path to the labels `DATASET.TR_ANNOTATIONS_FILE` (train), `DATASET.VL_ANNOTATIONS_FILE` (validation), `DATASET.TS_ANNOTATIONS_FILE` (test)
+
+  2.2 If you are evaluating the models, the config file should point to the model used for predictions `MODEL.OMNIGRU_CHECKPOINT_URL`.
+
+  2.3 You also have to configure where are your Yolo models `MODEL.YOLO_CHECKPOINT_URL` needed to extract image features.
+
+  2.4 The following script is always running cross-validation. Inside the script, you can change `CROSS_VALIDATION="false"` to run it with a single step.
+      You also have to change the config `TRAIN.USE_CROSS_VALIDATION`.
 
 ```
 bash scripts/omnimix.sh /path/to/the/frames/squash/files /path/to/the/sound/squash/files config/M2.yaml
@@ -99,7 +115,13 @@ bash scripts/omnimix.sh /path/to/the/frames/squash/files /path/to/the/sound/squa
 > [!NOTE] 
 > this code consider the squash files previously created.
 >
-> it is also expecting that use of the singuconda
+> it is also expecting the use of the singuconda
+
+  2.4 If you want to run out the NYU HPC or singularity, change the config file to point to your frame `DATASET.LOCATION` and sound `DATASET.AUDIO_LOCATION` paths. Finally, execute this python script
+
+```
+python tools/run_step_recog.py --cfg config/M2.yaml
+```
 
 ## **Visualizing the results**    
 
