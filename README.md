@@ -2,7 +2,7 @@
 # **Step recognition**
 
 This is the code for training and evaluation of the preception models built on the [PTG project](https://github.com/VIDA-NYU/ptg-server-ml) and developed by NYU.
-It can process videos and predict task (skill) steps such as the ones related to tactical field care.
+It can process videos and predict task (skill) steps such as the ones related to [tactical field care](https://www.ncbi.nlm.nih.gov/books/NBK532260/).
 
 > [!NOTE] 
 > This are the used skills:  Trauma Assessment (M1), Apply tourniquet (M2), Pressure Dressing (M3), X-Stat (M5), and Apply Chest seal (R18)
@@ -11,28 +11,8 @@ It can process videos and predict task (skill) steps such as the ones related to
 
 > [!NOTE] 
 > All this process is working in the [NYU Greene HPC](https://sites.google.com/nyu.edu/nyu-hpc/hpc-systems/greene)
-
-#### **Dependences**
-
-[![CLIP](https://img.shields.io/badge/CLIP-blue?logo=openai)](https://github.com/openai/CLIP)
-[![ultralytics](https://img.shields.io/badge/ultralytics-green?logo=ultralytics)](https://pypi.org/project/ultralytics/)
-
-[![librosa](https://img.shields.io/badge/librosa-red?logo=librosa)](https://pypi.org/project/librosa/)
-[![supervision](https://img.shields.io/badge/supervision-yellow?logo=supervision)](https://pypi.org/project/supervision/)
-[![singuconda](https://img.shields.io/badge/singuconda-brown?logo=singuconda)](https://github.com/beasteers/singuconda)
-
-[![fire](https://img.shields.io/badge/fire-grey?logo=fire)](https://pypi.org/project/fire/)
-[![fvcore](https://img.shields.io/badge/fvcore-blue?logo=fvcore)](https://pypi.org/project/fvcore/)
-[![hydra-core](https://img.shields.io/badge/hydracore-green?logo=hydra-core)](https://pypi.org/project/hydra-core/)
-[![einops](https://img.shields.io/badge/einops-red?logo=einops)](https://pypi.org/project/einops/)
-[![timm](https://img.shields.io/badge/timm-yellow?logo=timm)](https://pypi.org/project/timm/)
-[![h5py](https://img.shields.io/badge/h5py-brown?logo=h5py)](https://pypi.org/project/h5py/)
-[![wandb](https://img.shields.io/badge/wandb-grey?logo=wandb)](https://pypi.org/project/wandb/)
-
-[![simplejson](https://img.shields.io/badge/simplejson-blue?logo=simplejson)](https://pypi.org/project/simplejson/)
-[![tensorboard](https://img.shields.io/badge/tensorboard-green?logo=tensorboard)](https://pypi.org/project/tensorboard/)
-[![pathtrees](https://img.shields.io/badge/pathtrees-red?logo=pathtrees)](https://pypi.org/project/pathtree/)
-[![gdown](https://img.shields.io/badge/gdown-yellow?logo=gdown)](https://pypi.org/project/gdown/)
+>
+> Consider using [singuconda](https://github.com/beasteers/singuconda) to easy use singularity in the HPC
 
 #### **Repo**
 
@@ -40,6 +20,7 @@ It can process videos and predict task (skill) steps such as the ones related to
   git clone --recursive git@github.com:fabiofelix/procedural_step_recog.git
 
   cd procedural_step_recog/
+  pip install -r requirements.txt
   pip install -e .
 
   cd auditory_slowfast/
@@ -49,6 +30,9 @@ It can process videos and predict task (skill) steps such as the ones related to
 ## **Dataset**
 
 All video annotations should be in a CSV file with the EPICK-KITCHENS [structure](https://github.com/epic-kitchens/epic-kitchens-100-annotations). You should also add the column `video_fps` to describe the FPS of each video annotated.
+
+> [!INFORMATION] 
+> The code is using only these columns: video_id, start_frame, stop_frame, narration, verb_class, video_fps
 
 ## **Preprocessing videos**
 
@@ -82,7 +66,7 @@ The preprocessing steps are the extraction of video frames and sound. Basically,
   bash scripts/extract_frames.sh /path/to/the/skill desc/Data /path/to/save/the/sound/ SKILL sound false  
   ```  
 
-> [!NOTE] 
+> [!IMPORTANT] 
 > to execute this script, consider to use singularity with the image *ubuntu-22.04.3.sif*  or *rockylinux-9.2.sif* both available on the NYU HPC.
 >
 > if you are not using singularity, remember to install *ffmeg*
@@ -112,7 +96,7 @@ Check the configuration files under `config` folder.
 ```
 bash scripts/omnimix.sh /path/to/the/frames/squash/files /path/to/the/sound/squash/files config/M2.yaml
 ```
-> [!NOTE] 
+> [!IMPORTANT] 
 > this code consider the squash files previously created.
 >
 > it is also expecting the use of the singuconda
