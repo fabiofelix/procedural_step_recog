@@ -6,7 +6,7 @@ MODEL:
   USE_AUDIO: False  ##default false
   USE_BN: False      ##default false
   APPEND_OUT_POSITIONS: 3
-  DROP_OUT: 0.2
+  DROP_OUT: 0.5
 
   OMNIVORE_CONFIG: '/home/user/data/config/OMNIVORE.yaml'
   SLOWFAST_CONFIG: '/home/user/data/auditory_slowfast/configs/BBN/SLOWFAST_R50.yaml'
@@ -16,14 +16,14 @@ DATASET:
   AUDIO_LOCATION: '/sound'
   INCLUDE_IMAGE_AUGMENTATIONS: True
   INCLUDE_TIME_AUGMENTATIONS: False
-  IMAGE_AUGMENTATION_PERCENTAGE: 0.5
-  FPS: 30
+  IMAGE_AUGMENTATION_PERCENTAGE: 0.8
 DATALOADER:
   NUM_WORKERS: 12
   PIN_MEMORY: True
 TRAIN:
   ENABLE: True
-  USE_CROSS_VALIDATION: True
+  USE_CROSS_VALIDATION: True ##default true
+  USE_CLASS_WEIGHT: True ##default true
   NUM_GPUS: 1
   BATCH_SIZE: 8 #32
   OPT: "adam"  #adam sgd rmsprop

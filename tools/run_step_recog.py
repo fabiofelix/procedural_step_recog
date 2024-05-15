@@ -52,7 +52,7 @@ def collate_fn(data):
              here 'example' is a tensor of arbitrary shape
              and label/length are scalars
     """
-    omni,objs,frame,audio,lengths,labels,labels_t,frame_idx,ids = zip(*data)
+    omni,objs,frame,audio,lengths,labels,labels_t,frame_idx,ids,max_yolo_objects = zip(*data)
     nomni_feats = 0 if omni[0].shape[0] == 0 else omni[0].shape[1]
     nobj_feats = 0 if objs[0].shape[0] == 0 else objs[0].shape[2]
     nframe_feats = 0 if frame[0].shape[0] == 0 else frame[0].shape[2]
@@ -73,7 +73,7 @@ def collate_fn(data):
         omni_empty[:omni[i].shape[0],:] = omni[i]
       omni_new.append(omni_empty)
 
-      objs_empty = torch.zeros((max_length,25,nobj_feats))
+      objs_empty = torch.zeros((max_length,max_yolo_objects[0][0],nobj_feats))
       if nobj_feats > 0 and objs[i].shape[0] > 0:
         objs_empty[:objs[i].shape[0],...] = objs[i]
       objs_new.append(objs_empty)
@@ -175,7 +175,6 @@ def my_train_test_split(cfg, videos):
   return videos, video_test
 
 def train_kfold(cfg, args, k = 10):
-  # timeout = 0
   kf_train_val = KFold(n_splits = k)
 
   data   = pd.read_csv(cfg.DATASET.TR_ANNOTATIONS_FILE)

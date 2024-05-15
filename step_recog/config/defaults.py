@@ -22,6 +22,7 @@ _C.TRAIN.SCHEDULER = None
 _C.TRAIN.RETURN_METRICS = False
 _C.TRAIN.USE_CROSS_VALIDATION = True
 _C.TRAIN.CV_TEST_TYPE = None
+_C.TRAIN.USE_CLASS_WEIGHT = True
 
 # -----------------------------------------------------------------------------
 # EVAL options

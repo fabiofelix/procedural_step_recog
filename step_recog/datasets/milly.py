@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import copy
 import glob
-import pdb
+import ipdb
 import cv2
 import librosa
 import time
@@ -760,6 +760,7 @@ class Milly_multifeature_v4(Milly_multifeature):
       self.annotations = self.annotations[ self.annotations["video_id"].isin(self.data_filter) ]
 
     self.datapoints = {}
+    self.class_histogram = [0] * (self.cfg.MODEL.OUTPUT_DIM + 1)
     ipoint = 0
     total_window = 0
     video_ids = sorted(list(set(self.annotations.video_id)))
@@ -824,6 +825,7 @@ class Milly_multifeature_v4(Milly_multifeature):
           #---------------------------------------------------------------------------#
 
           win_idx += 1
+          self.class_histogram[step_ann.verb_class] += 1
           video_windows.append({
             'video_id': v,
             'window_id': win_idx,
@@ -865,38 +867,35 @@ class Milly_multifeature_v4(Milly_multifeature):
       progress.set_postfix({"window total": total_window, "padded videos": pad})
 
 
+  def augment_frames_aux(self, frames, frame_ids, aug):
+    new_frames = []
+    new_size = []
+
+    for id, frame in zip(frame_ids, frames):            
+      if self.frame_cache[id]["new"]:
+        self.frame_cache[id]["new"]   = False
+        self.frame_cache[id]["frame"] = aug(frame)[0].numpy()
+
+      new_frames.append(self.frame_cache[id]["frame"])
+
+    return new_frames, new_size              
+
   ##Apply the same augmentation to all windows in a video_id  
   def augment_frames(self, frames, frame_ids, video_id):
     if self.image_augs:
       if video_id in self.augment_configs:
         if self.augment_configs[video_id] is not None:
           aug = self.augment_configs[video_id]
-          new_frames = []
 
-          for id, frame in zip(frame_ids, frames):
-            if self.frame_cache[id]["new"]:
-              self.frame_cache[id]["new"]   = False
-              self.frame_cache[id]["frame"] = aug(frame)[0].numpy()
-
-            new_frames.append(self.frame_cache[id]["frame"])
-
-          return new_frames          
+          return self.augment_frames_aux(frames, frame_ids, aug)
       else:  
         self.augment_configs[video_id] = None
 
         if self.rng.choice([True, False], p = [self.cfg.DATASET.IMAGE_AUGMENTATION_PERCENTAGE, 1.0 - self.cfg.DATASET.IMAGE_AUGMENTATION_PERCENTAGE]):
           aug = get_augmentation(None, verbose = False)
           self.augment_configs[video_id] = aug
-          new_frames = []
 
-          for id, frame in zip(frame_ids, frames):
-            if self.frame_cache[id]["new"]:
-              self.frame_cache[id]["new"]   = False
-              self.frame_cache[id]["frame"] = aug(frame)[0].numpy()
-
-            new_frames.append(self.frame_cache[id]["frame"])
-
-          return new_frames  
+          return self.augment_frames_aux(frames, frame_ids, aug)
 
     return frames
 
@@ -970,6 +969,7 @@ class Milly_multifeature_v4(Milly_multifeature):
 
   def _extract_img_features(self, window_frames):
     frame = window_frames[-1]
+    max_yolo_objects = len(self.yolo.names)
     boxes = self.yolo(frame, verbose=False)
     boxes = boxes[0].boxes
 
@@ -979,8 +979,8 @@ class Milly_multifeature_v4(Milly_multifeature):
     Z_frame = torch.cat([Z_clip[:1], torch.tensor([[0, 0, 1, 1, 1]]).to(self.device)], dim=1)
     Z_objects = torch.cat([Z_clip[1:], boxes.xyxyn, boxes.conf[:, None]], dim=1)  ##deticn_bbn.py:Extractor.compute_store_clip_boxes returns xyxyn
     # pad boxes to size
-    _pad = torch.zeros((max(MAX_OBJECTS - Z_objects.shape[0], 0), Z_objects.shape[1])).to(self.device)
-    Z_objects = torch.cat([Z_objects, _pad])[:MAX_OBJECTS]
+    _pad = torch.zeros((max(max_yolo_objects - Z_objects.shape[0], 0), Z_objects.shape[1])).to(self.device)
+    Z_objects = torch.cat([Z_objects, _pad])[:max_yolo_objects]
 
     torch.cuda.empty_cache()   
     return Z_objects.detach().cpu().float(), Z_frame.detach().cpu().float()
@@ -1058,5 +1058,6 @@ class Milly_multifeature_v4(Milly_multifeature):
     window_stop_frame = torch.from_numpy(np.array(window_stop_frame))
     video_id = np.array([window["video_id"]])
     n_windows = torch.tensor(len(video["windows"]))
+    max_yolo_objects = np.array([ len(self.yolo.names)  ])
 
-    return video_act, video_obj, video_frame, video_sound, n_windows, window_step_label, window_position_label, window_stop_frame, video_id
+    return video_act, video_obj, video_frame, video_sound, n_windows, window_step_label, window_position_label, window_stop_frame, video_id, max_yolo_objects

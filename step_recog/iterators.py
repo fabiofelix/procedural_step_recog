@@ -13,50 +13,6 @@ import seaborn as sb, pandas as pd
 import warnings
 import glob
 
-def layer_summary(name, model):
-  layer = model._modules.get(name)
-  weights = layer._all_weights if isinstance(layer, nn.GRU) else ["weight", "bias"]
-
-  print("==========================================")
-
-  for weight_list in weights:
-    if isinstance(weight_list, str):  
-      weight_list = [weight_list]
-
-    for weight_name in weight_list:  
-      weight = getattr(layer, weight_name).detach().cpu().numpy()
-      print("Layer {} {} -> min: {} - max: {} - mean: {} - std: {}".format(name, weight_name, weight.min(), weight.max(), weight.mean(), weight.std()))
-
-def param_regularization(model, layer_name = None):
-  sum_reg = []
-  type_reg = "l1"
-
-  if layer_name is None:
-    for param in model.parameters():
-      if type_reg == "l1":
-        sum_reg.append(torch.sum(torch.abs(param)))
-      else:  
-        sum_reg.append(torch.sum(param**2))
-  else:   
-    layer = model._modules.get(layer_name)
-    params = layer._all_weights if isinstance(layer, nn.GRU) else ["weight", "bias"]
-    
-    for param_list in params:
-        if isinstance(param_list, str):  
-          param_list = [param_list]
-    
-        for param_name in param_list:  
-          param = getattr(layer, param_name)
-
-          if type_reg == "l1":
-            sum_reg.append(torch.sum(torch.abs(param)))
-          else:  
-            sum_reg.append(torch.sum(param**2))
-
-
-  factor =  0.01
-  return factor * torch.mean(torch.tensor(sum_reg))
-
 def build_model(cfg):
   device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
   model  = OmniGRU(cfg)
@@ -88,9 +44,6 @@ def train_step(epoch, model, criterion, criterion_t, optimizer, loader, is_train
     optimizer.zero_grad()
 
     out, h = model(action.to(device).float(), h, audio.to(device).float(), obj.to(device).float(), frame.to(device).float(), return_last_step = False)
-
-    if not is_training:
-      out = out.detach().to("cpu")
 
     mask    = mask.to(out.device)  
     label   = label.to(out.device)
@@ -131,7 +84,6 @@ def train_step(epoch, model, criterion, criterion_t, optimizer, loader, is_train
         label_masked_aux.append(l)
         out_masked_aux.append(o)
 
-#      pdb.set_trace()
     label_masked_aux = np.array(label_masked_aux)
     out_masked_aux = np.array(out_masked_aux)
     sum_acc   += accuracy_score(label_masked_aux, out_masked_aux)      
@@ -189,7 +141,15 @@ def train(train_loader, val_loader, cfg):
     best_model = os.path.join(cfg.OUTPUT.LOCATION, 'step_gru_best_model.pt')
 
     # Defining loss function and optimizer
-    criterion = nn.CrossEntropyLoss()
+    class_weight = None
+  
+    if cfg.TRAIN.USE_CLASS_WEIGHT:
+      class_weight = np.sum(train_loader.dataset.class_histogram) / np.array(train_loader.dataset.class_histogram) ## 1 / freq%
+      class_weight = class_weight / np.sum(class_weight) ## norm in [0, 1]
+      print("Cross-entropy weights", class_weight)
+      class_weight = torch.FloatTensor(class_weight).to(device)
+
+    criterion = nn.CrossEntropyLoss(weight = class_weight)
     criterion_t = nn.MSELoss()
     scheduler = None
 
@@ -224,11 +184,12 @@ def train(train_loader, val_loader, cfg):
         aug_data += " time"          
 
     print("Training of step recognition for {}: model {} - optimizer {} - features {} - {} ".format(cfg.SKILLS[0]["NAME"], model.__class__.__name__, optimizer.__class__.__name__, data_features, aug_data ))
-    best_val_loss = float('inf')
-    best_val_acc = float('inf')
 
     model, first_epoch, history = load_current_state(cfg, model)
     progress = tqdm.tqdm(total = len(train_loader), unit= "step", bar_format='{desc}|{bar:10}| {n_fmt}/{total_fmt} [{elapsed}<{remaining} - {rate_fmt}]{postfix}' )
+
+    best_val_loss = float('inf') if len(history["val_loss"]) == 0 else np.min(history["val_loss"])
+    best_val_acc  = float('inf') if len(history["val_acc"]) == 0 else np.min(history["val_acc"])
 
     for epoch in range(first_epoch, cfg.TRAIN.EPOCHS + 1):
       progress.set_description("Epoch {}/{} ".format(epoch, cfg.TRAIN.EPOCHS))
@@ -259,14 +220,13 @@ def train(train_loader, val_loader, cfg):
       if scheduler is not None:
         scheduler.step()
         print("Learning rate: ", scheduler.get_last_lr())
-
-      save_current_state(cfg, model, history, epoch) 
-
       if val_loss < best_val_loss:
         history["best_epoch"] = epoch
         best_val_loss = val_loss
         best_val_acc = val_acc
         torch.save(model.state_dict(), best_model)
+
+      save_current_state(cfg, model, history, epoch) 
 
     plot_history(history, cfg)        
 

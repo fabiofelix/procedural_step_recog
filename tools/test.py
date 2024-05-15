@@ -1,14 +1,12 @@
 import torch
-import time
 import pandas as pd
 import os
 from torch.utils.data import DataLoader
+
 from step_recog.config import load_config
 from step_recog import build_model, extract_features
 from step_recog.datasets import Milly_multifeature_v4
-from sklearn.model_selection import train_test_split
-
-from run_step_recog import parse_args, collate_fn
+from run_step_recog import parse_args, collate_fn, my_train_test_split
 
 def main():
   """
@@ -22,19 +20,10 @@ def main():
 
   # build the dataset
   timeout = 0
-
-  test_videos = None
   data   = pd.read_csv(cfg.DATASET.TS_ANNOTATIONS_FILE)
-  videos = data.video_id.unique()
+  _, video_test = my_train_test_split(cfg, data.video_id.unique())
 
-  if "M2" in cfg.SKILLS[0]["NAME"]:
-    videos, video_test = train_test_split(videos, test_size=0.10, random_state=2252) #M2      
-  elif "M5" in cfg.SKILLS[0]["NAME"]:
-    videos, video_test = train_test_split(videos, test_size=0.10, random_state=1030) #M5
-  elif "M3" in cfg.SKILLS[0]["NAME"] or "R18" in cfg.SKILLS[0]["NAME"]:
-    videos, video_test = train_test_split(videos, test_size=0.10, random_state=1740) #M3, R18
-
-  ts_dataset = Milly_multifeature_v4(cfg, split='test', filter=test_videos)
+  ts_dataset = Milly_multifeature_v4(cfg, split='test', filter=video_test)
   ts_data_loader = DataLoader(
           ts_dataset, 
           shuffle=False, 
@@ -49,7 +38,7 @@ def main():
   weights = torch.load(cfg.MODEL.OMNIGRU_CHECKPOINT_URL)
   model.load_state_dict(model.update_version(weights))
 
-  cfg.OUTPUT.LOCATION = os.path.join(cfg.OUTPUT.LOCATION, "test")
+  # cfg.OUTPUT.LOCATION = os.path.join(cfg.OUTPUT.LOCATION, "test")
   extract_features(model, ts_data_loader, cfg)
 
 if __name__ == "__main__":

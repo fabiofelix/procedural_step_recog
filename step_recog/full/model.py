@@ -86,7 +86,7 @@ class StepPredictor(nn.Module):
 
     def forward(self, image, queue_omni_frame = True):
         # compute yolo
-        Z_objects, Z_frame = torch.zeros((1, 1, 25, 0)), torch.zeros((1, 1, 1, 0))
+        Z_objects, Z_frame = torch.zeros((1, 1, 25, 0)).float(), torch.zeros((1, 1, 1, 0)).float()
         if self.head.use_objects:
             results = self.yolo(image, verbose=False)
             boxes = results[0].boxes

@@ -12,7 +12,7 @@ It can process videos and predict task (skill) steps such as the ones related to
 > [!NOTE] 
 > All this process is working in the [NYU Greene HPC](https://sites.google.com/nyu.edu/nyu-hpc/hpc-systems/greene)
 >
-> Consider using [singuconda](https://github.com/beasteers/singuconda) to easy use singularity in the HPC
+> Consider using [singuconda](https://github.com/beasteers/singuconda) to easily use [singularity](https://docs.sylabs.io/guides/3.5/user-guide/introduction.html) in the HPC
 
 #### **Repo**
 
@@ -31,7 +31,7 @@ It can process videos and predict task (skill) steps such as the ones related to
 
 All video annotations should be in a CSV file with the EPICK-KITCHENS [structure](https://github.com/epic-kitchens/epic-kitchens-100-annotations). You should also add the column `video_fps` to describe the FPS of each video annotated.
 
-> [!INFORMATION] 
+> [!NOTE] 
 > The code is using only these columns: video_id, start_frame, stop_frame, narration, verb_class, video_fps
 
 ## **Preprocessing videos**
