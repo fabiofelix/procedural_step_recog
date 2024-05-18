@@ -32,10 +32,9 @@ def train_step(epoch, model, criterion, criterion_t, optimizer, loader, is_train
   sum_loss = 0.
   sum_b_acc = 0.
   sum_acc = 0.
-  number_classes = cfg.MODEL.OUTPUT_DIM if cfg.MODEL.APPEND_OUT_POSITIONS == 2 else cfg.MODEL.OUTPUT_DIM + 1
 
   for counter, (action, obj, frame, audio, label, label_t, mask, frame_idx, video_id) in enumerate(loader, 1):
-    label = nn.functional.one_hot(label, number_classes)
+    label = nn.functional.one_hot(label, model.number_classes)
 
     if not is_training:
       h = model.init_hidden(len(action))
@@ -49,8 +48,8 @@ def train_step(epoch, model, criterion, criterion_t, optimizer, loader, is_train
     label   = label.to(out.device)
     label_t = label_t.to(out.device)
 
-    out_t  = torch.softmax(out[..., number_classes:], dim = -1)  #regression of time positions. Limits the results to [0, 1] range
-    out    = out[..., :number_classes]                           #classification of steps. CrossEntropyLoss consumes logits          
+    out_t  = torch.softmax(out[..., model.number_classes:], dim = -1)  #regression of time positions. Limits the results to [0, 1] range
+    out    = out[..., :model.number_classes]                           #classification of steps. CrossEntropyLoss consumes logits          
 
     out_masked   = out * mask
     label_masked = mask * label.float()      
@@ -87,7 +86,7 @@ def train_step(epoch, model, criterion, criterion_t, optimizer, loader, is_train
     label_masked_aux = np.array(label_masked_aux)
     out_masked_aux = np.array(out_masked_aux)
     sum_acc   += accuracy_score(label_masked_aux, out_masked_aux)      
-    sum_b_acc += weighted_accuracy(label_masked_aux, out_masked_aux, number_classes)
+    sum_b_acc += weighted_accuracy(label_masked_aux, out_masked_aux, model.number_classes)
 
     if is_training:
       progress.update(1)
@@ -236,8 +235,7 @@ def train(train_loader, val_loader, cfg):
       return best_model
 
 @torch.no_grad()
-def evaluate(model, data_loader, cfg, aggregate_avg = False):
-  number_classes = cfg.MODEL.OUTPUT_DIM if cfg.MODEL.APPEND_OUT_POSITIONS == 2 else cfg.MODEL.OUTPUT_DIM + 1
+def evaluate(model, data_loader, cfg):
   device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
   model.eval()  
   
@@ -248,7 +246,7 @@ def evaluate(model, data_loader, cfg, aggregate_avg = False):
     h = model.init_hidden(len(action))
 
     out, _ = model(action.to(device).float(), h, audio.to(device).float(), obj.to(device).float(), frame.to(device).float(), return_last_step = False)
-    out    = torch.softmax(out[..., :number_classes], dim = -1).cpu().detach().numpy()
+    out    = torch.softmax(out[..., :model.number_classes], dim = -1).cpu().detach().numpy()
     label  = label.cpu().numpy()
     frame_idx = frame_idx.cpu().numpy()
 
@@ -266,19 +264,55 @@ def evaluate(model, data_loader, cfg, aggregate_avg = False):
           targets.append(target)
           outputs.append(pred)
 
-      save_video_evaluation(video_id[0], aux_frame, aux_targets, aux_outputs, cfg)  
+      save_video_evaluation(video_id, aux_frame, aux_targets, aux_outputs, cfg)  
 
   targets = np.array(targets)
   outputs = np.array(outputs)
 
-  classes = [ i for i in range(number_classes)]
-  classes_desc = [ "Step " + str(i + 1)  for i in range(number_classes)]
+  classes = [ i for i in range(model.number_classes)]
+  classes_desc = [ "Step " + str(i + 1)  for i in range(model.number_classes)]
   classes_desc[-1] = "No step"
   save_evaluation(targets, np.argmax(outputs, axis = 1), classes, cfg, label_order = classes_desc)
 
+action_projection = None
+obj_projection = None
+frame_projection = None
+img_combination_projection = None
+img_projection = None
+sound_projection = None
+gru_input = None
+gru_output = None
+
+def act_hook(module, input, output):
+  global action_projection
+  action_projection = output.cpu().detach().numpy() 
+
+def obj_hook(module, input, output):
+  global obj_projection
+  obj_projection = output.cpu().detach().numpy() 
+
+def frame_hook(module, input, output):
+  global frame_projection
+  frame_projection = output.cpu().detach().numpy()   
+
+def img_hook(module, input, output):
+  global img_combination_projection
+  global img_projection
+  img_combination_projection = input[0].cpu().detach().numpy()
+  img_projection = output.cpu().detach().numpy() 
+
+def sound_hook(module, input, output):
+  global sound_projection
+  sound_projection = output.cpu().detach().numpy()  
+
+def gru_hook(module, input, output):
+  global gru_input
+  global gru_output
+  gru_input  = input[0].cpu().detach().numpy()
+  gru_output = output[0].cpu().detach().numpy()    
+
 @torch.no_grad()
 def extract_features(model, data_loader, cfg, aggregate_avg = False):
-  number_classes = cfg.MODEL.OUTPUT_DIM if cfg.MODEL.APPEND_OUT_POSITIONS == 2 else cfg.MODEL.OUTPUT_DIM + 1
   device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
   model.eval()  
 
@@ -289,17 +323,63 @@ def extract_features(model, data_loader, cfg, aggregate_avg = False):
       for step in skill['STEPS']
   ])
 
+  layer = model._modules.get("action_fc")
+  if layer is not None:
+    layer.register_forward_hook(act_hook)
+
+  layer = model._modules.get("obj_proj")
+  if layer is not None:
+    layer.register_forward_hook(obj_hook)  
+
+  layer = model._modules.get("frame_proj")
+  if layer is not None:
+    layer.register_forward_hook(frame_hook)      
+
+  layer = model._modules.get("obj_fc")
+  if layer is not None:
+    layer.register_forward_hook(img_hook)  
+
+  layer = model._modules.get("audio_fc")
+  if layer is not None:
+    layer.register_forward_hook(sound_hook)    
+
+  layer = model._modules.get("gru")
+  if layer is not None:
+    layer.register_forward_hook(gru_hook)  
+
+  global action_projection
+  global obj_projection  
+  global frame_projection    
+  global img_combination_projection
+  global img_projection
+  global sound_projection   
+  global gru_input 
+  global gru_output
+
   for idx, (action, obj, frame, audio, label, _, _, frame_idx, videos) in enumerate(data_loader, start=1):
     print("|- Batch", idx)
     h = model.init_hidden(len(action))
 
     out, _ = model(action.to(device).float(), h, audio.to(device).float(), obj.to(device).float(), frame.to(device).float(), return_last_step = False)
-    out    = torch.softmax(out[..., :number_classes], dim = -1).cpu().detach().numpy()
+    out    = torch.softmax(out[..., :model.number_classes], dim = -1).cpu().detach().numpy()
     label  = label.cpu().numpy()
     frame_idx = frame_idx.cpu().numpy()
 
-    for video_id, video_frames, frame_target, frame_pred, a_feat, o_feat, f_feat, s_feat in zip(videos, frame_idx, label, out, action, obj, frame, audio):
-      print("|--", video_id[0])
+    if action_projection is None:
+      action_projection = np.zeros(action.shape[:2] + (0,))
+    if obj_projection is None:  
+      obj_projection = np.zeros(obj.shape[:2] + (0,))       
+    if frame_projection is None:  
+      frame_projection = np.zeros(obj.shape[:2] + (0,))             
+    if img_projection is None:  
+      img_projection = np.zeros(obj.shape[:2] + (0,))       
+    if img_combination_projection is None:  
+      img_combination_projection = np.zeros(obj.shape[:2] + (0,)) 
+    if sound_projection is None:  
+      sound_projection = np.zeros(audio.shape[:2] + (0,)) 
+
+    for video_id, video_frames, frame_target, frame_pred, a_feat, o_feat, f_feat, s_feat, act_proj, frame_proj, obj_proj, img_comb, img_proj, sound_proj, feat_concat, gru_proj in zip(videos, frame_idx, label, out, action, obj, frame, audio, action_projection, frame_projection, obj_projection, img_combination_projection, img_projection, sound_projection, gru_input, gru_output):
+      print("|--", video_id)
       frames  = []
       outputs = []
       output_desc = []
@@ -308,9 +388,17 @@ def extract_features(model, data_loader, cfg, aggregate_avg = False):
       action_feature = []
       frame_feature = []
       obj_feature = []
-      sound_feature = []      
+      sound_feature = []
+      act_proj_feature = []      
+      obj_proj_feature = []            
+      frame_proj_feature = []            
+      img_comb_feature = []
+      img_proj_feature = []      
+      sound_proj_feature = []      
+      features_concat = []      
+      gru_feature = []
 
-      for frame, target, pred, a, o, f, s in zip(video_frames, frame_target, frame_pred, a_feat, o_feat, f_feat, s_feat):
+      for frame, target, pred, a, o, f, s, a_p, f_p, o_p, i_c, i_p, s_p, f_c, g_p in zip(video_frames, frame_target, frame_pred, a_feat, o_feat, f_feat, s_feat, act_proj, frame_proj, obj_proj, img_comb, img_proj, sound_proj, feat_concat, gru_proj):
         if frame > 0:
           frames.append(frame)
 
@@ -325,10 +413,24 @@ def extract_features(model, data_loader, cfg, aggregate_avg = False):
           frame_feature.append(f.numpy())
           obj_feature.append(o.numpy())
           sound_feature.append(s.numpy())
+          act_proj_feature.append(a_p)
+          obj_proj_feature.append(o_p)
+          frame_proj_feature.append(f_p)
+          img_comb_feature.append(i_c)
+          img_proj_feature.append(i_p)
+          sound_proj_feature.append(s_p)
+          features_concat.append(f_c)
+          gru_feature.append(g_p)
 
-      np.savez(os.path.join(cfg.OUTPUT.LOCATION, "{}-features.npz".format(video_id[0])), action=np.array(action_feature), frame=np.array(frame_feature), object=np.array(obj_feature), sound=np.array(sound_feature))
-      np.savez(os.path.join(cfg.OUTPUT.LOCATION, "{}-window_label.npz".format(video_id[0])), frame_idx=np.array(frames), label=np.array(targets), label_desc=np.array(target_desc), label_pred=np.array(outputs), label_pred_desc=np.array(output_desc))
-      save_video_evaluation(video_id[0], frames, targets, outputs, cfg)
+      np.savez(os.path.join(cfg.OUTPUT.LOCATION, "{}-features.npz".format(video_id)), 
+                            action=np.array(action_feature), frame=np.array(frame_feature), object=np.array(obj_feature), sound=np.array(sound_feature),
+                            action_proj=np.array(act_proj_feature), 
+                            frame_proj=np.array(frame_proj_feature), obj_proj=np.array(obj_proj_feature), img_comb=np.array(img_comb_feature), img_proj=np.array(img_proj_feature), 
+                            sound_proj=np.array(sound_proj_feature), 
+                            feature_concat=features_concat, gru_feature=np.array(gru_feature)
+                            )
+      np.savez(os.path.join(cfg.OUTPUT.LOCATION, "{}-window_label.npz".format(video_id)), frame_idx=np.array(frames), label=np.array(targets), label_desc=np.array(target_desc), label_pred=np.array(outputs), label_pred_desc=np.array(output_desc))
+      save_video_evaluation(video_id, frames, targets, outputs, cfg)
 
 def plot_history(history, cfg):
   hist_file = open(os.path.join(cfg.OUTPUT.LOCATION, "history.json"), "w")
@@ -402,14 +504,13 @@ def plot_data(train, val, xlabel = None, ylabel = None, mark_best = None, palett
     plt.axvline(x = mark_best, color = palette["grey"])
 
 def save_evaluation(expected, predicted, classes, cfg, label_order = None, normalize = "true", file_name = "confusion_matrix.png", pad = None):
-  number_classes = cfg.MODEL.OUTPUT_DIM if cfg.MODEL.APPEND_OUT_POSITIONS == 2 else cfg.MODEL.OUTPUT_DIM + 1
   file = open(os.path.join(cfg.OUTPUT.LOCATION, "metrics.txt"), "w")
 
   try:
     file.write(classification_report(expected, predicted, zero_division = 0, labels = classes, target_names = label_order)) 
     file.write("\n\n")     
     file.write("Categorical accuracy: {:.2f}\n".format(accuracy_score(expected, predicted)))
-    file.write("Weighted accuracy: {:.2f}\n".format(weighted_accuracy(expected, predicted, number_classes)))
+    file.write("Weighted accuracy: {:.2f}\n".format(weighted_accuracy(expected, predicted, len(classes))))
     file.write("Balanced accuracy: {:.2f}\n".format(my_balanced_accuracy_score(expected, predicted)))
   finally:
     file.close() 
@@ -475,6 +576,14 @@ def save_video_evaluation(video_id, window_last_frame, expected, probs, cfg):
   figure.tight_layout()
   figure.savefig(os.path.join(output_location, "{}-step_variation.png".format(video_id)))    
 
+def weighted_accuracy(y_true, y_pred, number_classes):
+  sample_weight = np.ones(y_true.shape)
+
+  for cl in range(number_classes):
+    count = np.sum(y_true == cl)
+    sample_weight[y_true == cl] /= count  
+
+  return accuracy_score(y_true, y_pred, sample_weight = np.array(sample_weight))    
 
 ##https://github.com/scikit-learn/scikit-learn/blob/093e0cf14/sklearn/metrics/_classification.py
 ##treating division-by-zero
@@ -494,12 +603,4 @@ def my_balanced_accuracy_score(y_true, y_pred, *, sample_weight=None, adjusted=F
         score /= 1 - chance
     return score  
 
-def weighted_accuracy(y_true, y_pred, number_classes):
-  sample_weight = np.ones(y_true.shape)
-
-  for cl in range(number_classes):
-    count = np.sum(y_true == cl)
-    sample_weight[y_true == cl] /= count  
-
-  return accuracy_score(y_true, y_pred, sample_weight = np.array(sample_weight))    
 

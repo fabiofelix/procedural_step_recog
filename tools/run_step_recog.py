@@ -48,61 +48,81 @@ def parse_args():
 
 def collate_fn(data):
     """
-       data: is a list of tuples with (example, label, length)
-             here 'example' is a tensor of arbitrary shape
-             and label/length are scalars
+       data: is a list of tuples with (action features, object features, frame features, sound features, labels, labels_aux, frame_ids, video_ids)
+             action.shape  = (windows, action features)
+             objects.shape = (windows, k, object features) - being k the number of objects detected by Yolo
+             frame.shape   = (windows, 1, frame features)
+             sound.shape   = (windows, sound features)             
+             labels.shape  = (windows, )
+             labels_aux.shape = (windows, 2)             
+             frame_ids.shape  = (windows, )                          
+             video_ids.shape  = (windows, )                                       
     """
-    omni,objs,frame,audio,lengths,labels,labels_t,frame_idx,ids,max_yolo_objects = zip(*data)
-    nomni_feats = 0 if omni[0].shape[0] == 0 else omni[0].shape[1]
-    nobj_feats = 0 if objs[0].shape[0] == 0 else objs[0].shape[2]
-    nframe_feats = 0 if frame[0].shape[0] == 0 else frame[0].shape[2]
-    naudio_feats = 0 if audio[0].shape[0] == 0 else audio[0].shape[1]
-    max_length = max(lengths) 
+    omni, objs, frame, audio, labels, labels_aux, frame_idx, video_ids = zip(*data)
+
+    nomni_feats  = 0 if omni[0].shape[0] == 0 else omni[0].shape[-1]
+    nobj         = 0 if objs[0].shape[0] == 0 else max([ sample.shape[-2] for sample in objs ])
+    nobj_feats   = 0 if objs[0].shape[0] == 0 else objs[0].shape[-1]
+    nframe       = 0 if frame[0].shape[0] == 0 else frame[0].shape[-2]
+    nframe_feats = 0 if frame[0].shape[0] == 0 else frame[0].shape[-1]
+    naudio_feats = 0 if audio[0].shape[0] == 0 else audio[0].shape[-1]
+    naux_labels  = labels_aux[0].shape[-1]
+
+    if nomni_feats > 0:
+      nwindows = max([ sample.shape[0]  for sample in omni ])
+    elif  nframe_feats > 0: 
+      nwindows = max([ sample.shape[0]  for sample in frame ])
+    elif  naudio_feats > 0: 
+      nwindows = max([ sample.shape[0]  for sample in audio ])  
+
     omni_new = []
     objs_new = []
     frame_new = []
     audio_new = []
     labels_new = []
-    labels_t_new = []
+    labels_aux_new = []
     mask_new = []
     frame_idx_new = []
+    video_ids_new = []
 
     for i in range(len(data)):
-      omni_empty = torch.zeros((max_length,nomni_feats))
+      video_ids_new.append(video_ids[i][0])
+
+      omni_empty = torch.zeros((nwindows, nomni_feats))
       if nomni_feats > 0 and omni[i].shape[0] > 0:
-        omni_empty[:omni[i].shape[0],:] = omni[i]
+        omni_empty[:omni[i].shape[0], ...] = omni[i]
       omni_new.append(omni_empty)
 
-      objs_empty = torch.zeros((max_length,max_yolo_objects[0][0],nobj_feats))
+      objs_empty = torch.zeros((nwindows, nobj, nobj_feats))
       if nobj_feats > 0 and objs[i].shape[0] > 0:
-        objs_empty[:objs[i].shape[0],...] = objs[i]
+        objs_empty[:objs[i].shape[0], ...] = objs[i]
       objs_new.append(objs_empty)
 
-      frame_empty = torch.zeros((max_length,1,nframe_feats))
+      frame_empty = torch.zeros((nwindows, nframe, nframe_feats))
       if nframe_feats > 0 and frame[i].shape[0] > 0:
-        frame_empty[:frame[i].shape[0],:] = frame[i]
+        frame_empty[:frame[i].shape[0], ...] = frame[i]
       frame_new.append(frame_empty)
 
-      audio_empty = torch.zeros((max_length,naudio_feats))
+      audio_empty = torch.zeros((nwindows, naudio_feats))
       if naudio_feats > 0 and audio[i].shape[0] > 0:
-        audio_empty[:audio[i].shape[0],:] = audio[i]
+        audio_empty[:audio[i].shape[0], ...] = audio[i]
       audio_new.append(audio_empty)        
 
-      labels_empty = torch.zeros((max_length))
+      labels_empty = torch.zeros((nwindows))
       if labels[i].shape[0] > 0:
         labels_empty[:labels[i].shape[0]] = labels[i]
       labels_new.append(labels_empty)
 
-      labels_t_empty = torch.zeros((max_length,2))
-      if labels_t[i].shape[0] > 0:
-        labels_t_empty[:labels_t[i].shape[0]] = labels_t[i][...,-2:]
-      labels_t_new.append(labels_t_empty)
+      labels_aux_empty = torch.zeros((nwindows, naux_labels))
+      if labels_aux[i].shape[0] > 0:
+        labels_aux_empty[:labels_aux[i].shape[0]] = labels_aux[i][..., -naux_labels:]
+      labels_aux_new.append(labels_aux_empty)
 
-      mask_empty = torch.zeros((max_length,1))
+      mask_empty = torch.zeros((nwindows, 1))
       mask_empty[:labels[i].shape[0]] = 1
       mask_new.append(mask_empty)
 
-      frame_idx_empty = torch.zeros((max_length))
+      frame_idx_empty = torch.zeros((nwindows))
       if frame_idx[i].shape[0] > 0:
         frame_idx_empty[:frame_idx[i].shape[0]] = frame_idx[i]
       frame_idx_new.append(frame_idx_empty)        
@@ -112,11 +132,12 @@ def collate_fn(data):
     frame_new = torch.stack(frame_new)
     audio_new = torch.stack(audio_new)
     labels_new = torch.stack(labels_new)
-    labels_t_new = torch.stack(labels_t_new)
+    labels_aux_new = torch.stack(labels_aux_new)
     mask_new = torch.stack(mask_new)
     frame_idx_new = torch.stack(frame_idx_new)
+    video_ids_new = np.array(video_ids_new)
 
-    return omni_new.float(), objs_new.float(), frame_new.float(), audio_new.float(), labels_new.long(), labels_t_new.float(), mask_new.long(), frame_idx_new.long(), ids
+    return omni_new.float(), objs_new.float(), frame_new.float(), audio_new.float(), labels_new.long(), labels_aux_new.float(), mask_new.long(), frame_idx_new.long(), video_ids_new
 
 def main():
   """

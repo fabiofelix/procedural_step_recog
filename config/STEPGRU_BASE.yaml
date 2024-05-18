@@ -5,7 +5,6 @@ MODEL:
   USE_OBJECTS: True  ##default true
   USE_AUDIO: False  ##default false
   USE_BN: False      ##default false
-  APPEND_OUT_POSITIONS: 3
   DROP_OUT: 0.5
 
   OMNIVORE_CONFIG: '/home/user/data/config/OMNIVORE.yaml'

@@ -19,7 +19,6 @@ from collections import OrderedDict
 mod_path = os.path.join(os.path.dirname(__file__), '..')
 sys.path.insert(0,  mod_path)
 
-
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 def custom_weights(layer):
@@ -36,6 +35,7 @@ def args_hook(cfg_file):
 class OmniGRU(nn.Module):
     def __init__(self, cfg, load = False):
         super().__init__()
+
         action_size = 1024 #default Omnivore output
         audio_size  = 2304 #default Slowfast output
         img_size    = 517  #default Clip output (512) + Yolo bouding box (4) + Yolo confidence (1)
@@ -47,6 +47,8 @@ class OmniGRU(nn.Module):
         self.use_bn = cfg.MODEL.USE_BN
         self.skills = cfg.MODEL.SKILLS
         self.hidden_dim = cfg.MODEL.HIDDEN_SIZE
+        self.number_classes = cfg.MODEL.OUTPUT_DIM + 1 #adding no step
+        self.number_position = 2 # adding window position in a step to the output
 
         self.n_gru_layers = 2
         gru_input_dim = 0
@@ -78,7 +80,7 @@ class OmniGRU(nn.Module):
            raise Exception("GRU has to use at least one input (action, object/frame, or audio)")             
 
         self.gru = nn.GRU(gru_input_dim, cfg.MODEL.HIDDEN_SIZE, self.n_gru_layers, batch_first=True, dropout=cfg.MODEL.DROP_OUT)
-        self.fc = nn.Linear(cfg.MODEL.HIDDEN_SIZE, cfg.MODEL.OUTPUT_DIM + cfg.MODEL.APPEND_OUT_POSITIONS)  ## adding no step, begin, and end positions to the output
+        self.fc = nn.Linear(cfg.MODEL.HIDDEN_SIZE, self.number_classes + self.number_position)
         self.relu = nn.ReLU()
 
         if load:
@@ -153,4 +155,3 @@ class OmniGRU(nn.Module):
         new_dict[key] = value
           
       return new_dict    
-

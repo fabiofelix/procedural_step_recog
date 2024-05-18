@@ -5,7 +5,7 @@ This is the code for training and evaluation of the preception models built on t
 It can process videos and predict task (skill) steps such as the ones related to [tactical field care](https://www.ncbi.nlm.nih.gov/books/NBK532260/).
 
 > [!NOTE] 
-> This are the used skills:  Trauma Assessment (M1), Apply tourniquet (M2), Pressure Dressing (M3), X-Stat (M5), and Apply Chest seal (R18)
+> These are the used skills:  Trauma Assessment (M1), Apply tourniquet (M2), Pressure Dressing (M3), X-Stat (M5), and Apply Chest seal (R18)
 
 ## **Install**
 
@@ -45,7 +45,7 @@ The preprocessing steps are the extraction of video frames and sound. Basically,
   bash scripts/extract_frames.sh /path/to/the/skill desc/Data /path/to/save/the/sound/ SKILL sound true 
   ```
 
-  1.2 `/path/to/the/skill desc/` should be structure such as
+  1.2 `/path/to/the/skill desc/` should be structured such as
 
   ```
    |- skill desc
