@@ -20,7 +20,7 @@ def build_model(cfg):
 
   return model, device  
 
-def train_step(epoch, model, criterion, criterion_t, optimizer, loader, is_training, device, cfg, progress, flatten_out = False):
+def train_step(model, criterion, criterion_t, optimizer, loader, is_training, device, cfg, progress):
   if is_training:
     model.train()
     h = model.init_hidden(cfg.TRAIN.BATCH_SIZE)
@@ -37,7 +37,7 @@ def train_step(epoch, model, criterion, criterion_t, optimizer, loader, is_train
     label = nn.functional.one_hot(label, model.number_classes)
 
     if not is_training:
-      h = model.init_hidden(len(action))
+      h = model.init_hidden(len(label))
 
     h = torch.zeros_like(h)
     optimizer.zero_grad()
@@ -64,6 +64,19 @@ def train_step(epoch, model, criterion, criterion_t, optimizer, loader, is_train
       loss.backward()
       optimizer.step()
 
+    ## Moving things from GPU to CPU memory anc cleaning GPU to save memory
+    label   = label.cpu()
+    label_t = label_t.cpu()
+    out     = out.cpu()
+    out_t   = out_t.cpu()
+    mask    = mask.cpu()
+    out_masked   = out_masked.cpu()
+    label_masked = label_masked.cpu()
+    class_loss   = class_loss.detach().cpu()
+    pos_loss     = pos_loss.detach().cpu()
+    loss         = loss.detach().cpu()
+    torch.cuda.empty_cache()
+
     sum_class_loss += class_loss.item()
     sum_pos_loss   += pos_loss.item()
     sum_loss       += loss.item()
@@ -71,9 +84,9 @@ def train_step(epoch, model, criterion, criterion_t, optimizer, loader, is_train
     out_masked   = torch.argmax(torch.softmax(out_masked, dim = -1), axis = -1)
     label_masked = torch.argmax(label_masked, axis = -1)
 
-    mask         = torch.flatten(mask).cpu().numpy()  
-    label_masked = torch.flatten(label_masked).cpu().numpy()  
-    out_masked   = torch.flatten(out_masked).cpu().numpy()
+    mask         = torch.flatten(mask).numpy()  
+    label_masked = torch.flatten(label_masked).numpy()  
+    out_masked   = torch.flatten(out_masked).numpy()
 
     label_masked_aux = []
     out_masked_aux = []
@@ -138,7 +151,7 @@ def train(train_loader, val_loader, cfg):
     # Instantiating the models
     model, device = build_model(cfg)
     best_model = os.path.join(cfg.OUTPUT.LOCATION, 'step_gru_best_model.pt')
-
+    
     # Defining loss function and optimizer
     class_weight = None
   
@@ -194,7 +207,7 @@ def train(train_loader, val_loader, cfg):
       progress.set_description("Epoch {}/{} ".format(epoch, cfg.TRAIN.EPOCHS))
       progress.reset()
       
-      train_loss, train_class_loss, train_pos_loss, train_b_acc, train_acc, grad_norm = train_step(epoch=epoch, model=model, criterion=criterion, criterion_t=criterion_t, optimizer=optimizer, loader=train_loader, is_training=True, device=device, cfg=cfg, progress=progress)
+      train_loss, train_class_loss, train_pos_loss, train_b_acc, train_acc, grad_norm = train_step(model=model, criterion=criterion, criterion_t=criterion_t, optimizer=optimizer, loader=train_loader, is_training=True, device=device, cfg=cfg, progress=progress)
       history["train_loss"].append(train_loss)
       history["train_class_loss"].append(train_class_loss)
       history["train_pos_loss"].append(train_pos_loss)
@@ -203,7 +216,7 @@ def train(train_loader, val_loader, cfg):
       history["train_grad_norm"].append(grad_norm)
 
       with torch.no_grad():
-        val_loss, val_class_loss, val_pos_loss, val_b_acc, val_acc, grad_norm = train_step(epoch=epoch, model=model, criterion=criterion, criterion_t=criterion_t, optimizer=optimizer, loader=val_loader, is_training=False, device=device, cfg=cfg, progress=progress)
+        val_loss, val_class_loss, val_pos_loss, val_b_acc, val_acc, grad_norm = train_step(model=model, criterion=criterion, criterion_t=criterion_t, optimizer=optimizer, loader=val_loader, is_training=False, device=device, cfg=cfg, progress=progress)
         
       history["val_loss"].append(val_loss)
       history["val_class_loss"].append(val_class_loss)
@@ -249,6 +262,7 @@ def evaluate(model, data_loader, cfg):
     out    = torch.softmax(out[..., :model.number_classes], dim = -1).cpu().detach().numpy()
     label  = label.cpu().numpy()
     frame_idx = frame_idx.cpu().numpy()
+    torch.cuda.empty_cache()
 
     for video_id, video_frames, frame_target, frame_pred in zip(videos, frame_idx, label, out):
       aux_frame = []
@@ -364,6 +378,7 @@ def extract_features(model, data_loader, cfg, aggregate_avg = False):
     out    = torch.softmax(out[..., :model.number_classes], dim = -1).cpu().detach().numpy()
     label  = label.cpu().numpy()
     frame_idx = frame_idx.cpu().numpy()
+    torch.cuda.empty_cache()
 
     if action_projection is None:
       action_projection = np.zeros(action.shape[:2] + (0,))

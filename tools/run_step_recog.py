@@ -6,9 +6,10 @@ import time
 from torch.utils.data import DataLoader
 from step_recog.config import load_config
 from step_recog import train, evaluate, build_model
-from step_recog.datasets import Milly_multifeature_v4
+from step_recog.datasets import Milly_multifeature_v4, collate_fn
 from sklearn.model_selection import KFold, train_test_split
 import pandas as pd, pdb, numpy as np
+import math
 
 def parse_args():
     """
@@ -46,99 +47,6 @@ def parse_args():
         parser.print_help()
     return parser.parse_args()
 
-def collate_fn(data):
-    """
-       data: is a list of tuples with (action features, object features, frame features, sound features, labels, labels_aux, frame_ids, video_ids)
-             action.shape  = (windows, action features)
-             objects.shape = (windows, k, object features) - being k the number of objects detected by Yolo
-             frame.shape   = (windows, 1, frame features)
-             sound.shape   = (windows, sound features)             
-             labels.shape  = (windows, )
-             labels_aux.shape = (windows, 2)             
-             frame_ids.shape  = (windows, )                          
-             video_ids.shape  = (windows, )                                       
-    """
-    omni, objs, frame, audio, labels, labels_aux, frame_idx, video_ids = zip(*data)
-
-    nomni_feats  = 0 if omni[0].shape[0] == 0 else omni[0].shape[-1]
-    nobj         = 0 if objs[0].shape[0] == 0 else max([ sample.shape[-2] for sample in objs ])
-    nobj_feats   = 0 if objs[0].shape[0] == 0 else objs[0].shape[-1]
-    nframe       = 0 if frame[0].shape[0] == 0 else frame[0].shape[-2]
-    nframe_feats = 0 if frame[0].shape[0] == 0 else frame[0].shape[-1]
-    naudio_feats = 0 if audio[0].shape[0] == 0 else audio[0].shape[-1]
-    naux_labels  = labels_aux[0].shape[-1]
-
-    if nomni_feats > 0:
-      nwindows = max([ sample.shape[0]  for sample in omni ])
-    elif  nframe_feats > 0: 
-      nwindows = max([ sample.shape[0]  for sample in frame ])
-    elif  naudio_feats > 0: 
-      nwindows = max([ sample.shape[0]  for sample in audio ])  
-
-    omni_new = []
-    objs_new = []
-    frame_new = []
-    audio_new = []
-    labels_new = []
-    labels_aux_new = []
-    mask_new = []
-    frame_idx_new = []
-    video_ids_new = []
-
-    for i in range(len(data)):
-      video_ids_new.append(video_ids[i][0])
-
-      omni_empty = torch.zeros((nwindows, nomni_feats))
-      if nomni_feats > 0 and omni[i].shape[0] > 0:
-        omni_empty[:omni[i].shape[0], ...] = omni[i]
-      omni_new.append(omni_empty)
-
-      objs_empty = torch.zeros((nwindows, nobj, nobj_feats))
-      if nobj_feats > 0 and objs[i].shape[0] > 0:
-        objs_empty[:objs[i].shape[0], ...] = objs[i]
-      objs_new.append(objs_empty)
-
-      frame_empty = torch.zeros((nwindows, nframe, nframe_feats))
-      if nframe_feats > 0 and frame[i].shape[0] > 0:
-        frame_empty[:frame[i].shape[0], ...] = frame[i]
-      frame_new.append(frame_empty)
-
-      audio_empty = torch.zeros((nwindows, naudio_feats))
-      if naudio_feats > 0 and audio[i].shape[0] > 0:
-        audio_empty[:audio[i].shape[0], ...] = audio[i]
-      audio_new.append(audio_empty)        
-
-      labels_empty = torch.zeros((nwindows))
-      if labels[i].shape[0] > 0:
-        labels_empty[:labels[i].shape[0]] = labels[i]
-      labels_new.append(labels_empty)
-
-      labels_aux_empty = torch.zeros((nwindows, naux_labels))
-      if labels_aux[i].shape[0] > 0:
-        labels_aux_empty[:labels_aux[i].shape[0]] = labels_aux[i][..., -naux_labels:]
-      labels_aux_new.append(labels_aux_empty)
-
-      mask_empty = torch.zeros((nwindows, 1))
-      mask_empty[:labels[i].shape[0]] = 1
-      mask_new.append(mask_empty)
-
-      frame_idx_empty = torch.zeros((nwindows))
-      if frame_idx[i].shape[0] > 0:
-        frame_idx_empty[:frame_idx[i].shape[0]] = frame_idx[i]
-      frame_idx_new.append(frame_idx_empty)        
-
-    omni_new = torch.stack(omni_new)
-    objs_new = torch.stack(objs_new)
-    frame_new = torch.stack(frame_new)
-    audio_new = torch.stack(audio_new)
-    labels_new = torch.stack(labels_new)
-    labels_aux_new = torch.stack(labels_aux_new)
-    mask_new = torch.stack(mask_new)
-    frame_idx_new = torch.stack(frame_idx_new)
-    video_ids_new = np.array(video_ids_new)
-
-    return omni_new.float(), objs_new.float(), frame_new.float(), audio_new.float(), labels_new.long(), labels_aux_new.float(), mask_new.long(), frame_idx_new.long(), video_ids_new
-
 def main():
   """
   Main function to spawn the process.
@@ -164,12 +72,13 @@ def main():
     data   = pd.read_csv(cfg.DATASET.TS_ANNOTATIONS_FILE)
     videos = data.video_id.unique()
     _, video_test = my_train_test_split(cfg, videos)    
+    ts_dataset = Milly_multifeature_v4(cfg, split='test', filter = video_test)
 
     ts_data_loader = DataLoader(
-            Milly_multifeature_v4(cfg, split='test', filter = video_test), 
+            ts_dataset, 
             shuffle=False, 
             batch_size=cfg.TRAIN.BATCH_SIZE,
-            num_workers=cfg.DATALOADER.NUM_WORKERS,
+            num_workers=min(math.ceil(len(ts_dataset) / cfg.TRAIN.BATCH_SIZE), cfg.DATALOADER.NUM_WORKERS),
             collate_fn=collate_fn,
             drop_last=False,
             timeout=timeout)
@@ -222,7 +131,7 @@ def train_kfold_step(cfg, main_path = None, video_train = None, video_val = None
           tr_dataset, 
           shuffle=False, 
           batch_size=cfg.TRAIN.BATCH_SIZE,
-          num_workers=cfg.DATALOADER.NUM_WORKERS,
+          num_workers=min(math.ceil(len(tr_dataset) / cfg.TRAIN.BATCH_SIZE), cfg.DATALOADER.NUM_WORKERS),
           collate_fn=collate_fn,
           drop_last=True,
           timeout=timeout)
@@ -230,7 +139,7 @@ def train_kfold_step(cfg, main_path = None, video_train = None, video_val = None
           vl_dataset, 
           shuffle=False, 
           batch_size=cfg.TRAIN.BATCH_SIZE,
-          num_workers=cfg.DATALOADER.NUM_WORKERS,
+          num_workers=min(math.ceil(len(vl_dataset) / cfg.TRAIN.BATCH_SIZE), cfg.DATALOADER.NUM_WORKERS),
           collate_fn=collate_fn,
           drop_last=False,
           timeout=timeout)  
@@ -270,7 +179,7 @@ def train_kfold_step(cfg, main_path = None, video_train = None, video_val = None
           ts_dataset, 
           shuffle=False, 
           batch_size=cfg.TRAIN.BATCH_SIZE,
-          num_workers=cfg.DATALOADER.NUM_WORKERS,
+          num_workers=min(math.ceil(len(ts_dataset) / cfg.TRAIN.BATCH_SIZE), cfg.DATALOADER.NUM_WORKERS),
           collate_fn=collate_fn,
           drop_last=False,
           timeout=timeout)
@@ -280,6 +189,7 @@ def train_kfold_step(cfg, main_path = None, video_train = None, video_val = None
 
   del ts_data_loader
   del ts_dataset                                                 
+
 
 if __name__ == "__main__":
     main()

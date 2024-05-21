@@ -128,7 +128,7 @@ python tools/test.py --cfg config/M3.yaml
 1. Main code: `toos/run_step_recog.py` (function *train_kfold*)
 2. Training/evaluation routines: `step_recog/iterators.py` (functions *train*, *evaluate*)
 3. Model classes: `step_recog/models.py`
-4. Dataloader: `step_recog/datasets/milly.py` (class *Milly_multifeature_v4* and methods *_construct_loader* and *do_getitem*)
+4. Dataloader: `step_recog/datasets/milly.py` (class *Milly_multifeature_v4* and methods *_construct_loader* and *_getitem_*)
 5. Image augmentation: `tools/augmentation.py` (function *get_augmentation*)
 6. Basic configuration: `step_recog/config/defaults.py` (more important), `act_recog/config/defaults.py`, `auditory_slowfast/config/defaults.py`
 6. Visualizer: `step_recog/full/visualize.py` implements a specific code that combines dataloading, model prediction, and a state machine. It uses the user interface with the trained models.
