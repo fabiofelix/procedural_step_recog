@@ -1,6 +1,8 @@
 _BASE_: STEPGRU_BASE.yaml
 MODEL:
   OMNIGRU_CHECKPOINT_URL: 
+  YOLO_CHECKPOINT_URL: /src/app/models/greene_models/yolo/bbn_yolo_R18.pt
+  PRETRAINED_CHECKPOINT_URL: https://github.com/beasteers/procedural_step_recog/release/latest/download/R18.pt
   OUTPUT_DIM: 5  
 
 SKILLS:

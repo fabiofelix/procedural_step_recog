@@ -20,6 +20,7 @@ mod_path = os.path.join(os.path.dirname(__file__), '..')
 sys.path.insert(0,  mod_path)
 
 from step_recog.config.defaults import get_cfg
+#from step_recog.resnet import ResNet
 from step_recog.full.download import cached_download_file
 from step_recog.full.clip_patches import ClipPatches 
 
@@ -28,9 +29,9 @@ from act_recog.config import load_config as act_load_config
 
 from ultralytics import YOLO
 
-from slowfast.utils.parser import load_config as slowfast_load_config
-from slowfast.models.audio_model_builder import SlowFast
-from slowfast.utils import checkpoint
+#from slowfast.utils.parser import load_config as slowfast_load_config
+#from slowfast.models.audio_model_builder import SlowFast
+#from slowfast.utils import checkpoint
 
 MAX_OBJECTS = 25
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -95,7 +96,8 @@ class OmniGRU(nn.Module):
         self.relu = nn.ReLU()
 
         if load:
-          self.load_state_dict( self.update_version(torch.load( cfg.MODEL.OMNIGRU_CHECKPOINT_URL )))
+          f = cfg.MODEL.OMNIGRU_CHECKPOINT_URL or cached_download_file(cfg.MODEL.PRETRAINED_CHECKPOINT_URL)
+          self.load_state_dict(self.update_version(torch.load(f)))
         else:
           self.apply(custom_weights)
 

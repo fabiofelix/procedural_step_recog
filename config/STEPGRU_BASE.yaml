@@ -7,7 +7,10 @@ MODEL:
   USE_BN: False      ##default false
   APPEND_OUT_POSITIONS: 3
 
-  OMNIVORE_CONFIG: '/home/user/data/config/OMNIVORE.yaml'
+  #OMNIVORE_CONFIG: '/home/user/data/config/OMNIVORE.yaml'
+  YOLO_CHECKPOINT_URL: '/home/user/data/models/M2_M3_M5_R18_v9_2.pt'
+  OMNIVORE_CONFIG: OMNIVORE
+  #OMNIVORE_CONFIG: '/home/user/data/config/OMNIVORE.yaml'
   SLOWFAST_CONFIG: '/home/user/data/auditory_slowfast/configs/BBN/SLOWFAST_R50.yaml'
 DATASET:
   NAME: 'Milly'
