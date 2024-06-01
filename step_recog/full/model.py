@@ -13,8 +13,8 @@ from act_recog.datasets.transform import uniform_crop
 from step_recog.config import load_config
 from step_recog.models import OmniGRU
 
-from clip_patches import ClipPatches
-from download import cached_download_file
+from step_recog.full.clip_patches import ClipPatches
+from step_recog.full.download import cached_download_file
 
 def args_hook(cfg_file):
   args = lambda: None
@@ -28,6 +28,7 @@ class StepPredictor(nn.Module):
     def __init__(self, cfg_file, video_fps = 30):
         super().__init__()
         # load config
+        self._device = nn.Parameter(torch.empty(0))
         self.cfg = load_config(args_hook(cfg_file))
         self.omni_cfg = act_load_config(args_hook(self.cfg.MODEL.OMNIVORE_CONFIG))
 
@@ -46,6 +47,7 @@ class StepPredictor(nn.Module):
         
         # build model
         self.head = OmniGRU(self.cfg, load=True)
+        self.head.eval()
         if self.head.use_action:
             self.omnivore = Omnivore(self.omni_cfg)
         if self.head.use_objects:
@@ -53,6 +55,7 @@ class StepPredictor(nn.Module):
             self.yolo = YOLO(yolo_checkpoint)
             self.yolo.eval = lambda *a: None
             self.clip_patches = ClipPatches()
+            self.clip_patches.eval()
         if self.head.use_audio:
             raise NotImplementedError()
         
@@ -93,13 +96,13 @@ class StepPredictor(nn.Module):
             Z_clip = self.clip_patches(image, boxes.xywh.cpu().numpy(), include_frame=True)
 
             # concatenate with boxes and confidence
-            Z_frame = torch.cat([Z_clip[:1], torch.tensor([[0, 0, 1, 1, 1]]).to(Z_clip.device)], dim=1)
+            Z_frame = torch.cat([Z_clip[:1], torch.tensor([[0, 0, 1, 1, 1]]).to(self._device.device)], dim=1)
             Z_objects = torch.cat([Z_clip[1:], boxes.xyxyn, boxes.conf[:, None]], dim=1)  ##deticn_bbn.py:Extractor.compute_store_clip_boxes returns xyxyn
             # pad boxes to size
-            _pad = torch.zeros((max(self.MAX_OBJECTS - Z_objects.shape[0], 0), Z_objects.shape[1])).to(Z_objects.device)
+            _pad = torch.zeros((max(self.MAX_OBJECTS - Z_objects.shape[0], 0), Z_objects.shape[1])).to(self._device.device)
             Z_objects = torch.cat([Z_objects, _pad])[:self.MAX_OBJECTS]
-            Z_frame = Z_frame[None,None].float()
-            Z_objects = Z_objects[None,None].float()
+            Z_frame = Z_frame[None,None].detach().cpu().float()
+            Z_objects = Z_objects[None,None].detach().cpu().float()
 
         # compute audio embeddings
         Z_audio = torch.zeros((1, 1, 0)).float()
@@ -117,13 +120,13 @@ class StepPredictor(nn.Module):
             X_omnivore = torch.stack(list(self.omnivore_input_queue), dim=1)[None]
             frame_idx = np.linspace(0, self.omnivore_input_queue.maxlen - 1, self.omni_cfg.MODEL.NFRAMES).astype('long') #same as act_recog.dataset.milly.py:pack_frames_to_video_clip
             X_omnivore = X_omnivore[:, :, frame_idx, :, :]
-            _, Z_action = self.omnivore(X_omnivore.to(Z_objects.device), return_embedding=True)
-            Z_action = Z_action[None].float()
+            _, Z_action = self.omnivore(X_omnivore.to(self._device.device), return_embedding=True)
+            Z_action = Z_action[None].detach().cpu().float()
 
         # mix it all together
         if self.h is None:
           self.h = self.head.init_hidden(Z_action.shape[0])
           
-        prob_step, self.h = self.head(Z_action, self.h.float(), Z_audio, Z_objects, Z_frame)
-        prob_step = torch.softmax(prob_step[..., :-2], dim=-1) #prob_step has <n classe positions> <1 no step position> <2 begin-end frame identifiers>
+        prob_step, self.h = self.head(Z_action.to(self._device.device), self.h.float(), Z_audio.to(self._device.device), Z_objects.to(self._device.device), Z_frame.to(self._device.device))
+        prob_step = torch.softmax(prob_step[..., :-2].detach(), dim=-1) #prob_step has <n classe positions> <1 no step position> <2 begin-end frame identifiers>
         return prob_step

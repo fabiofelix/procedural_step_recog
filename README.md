@@ -17,9 +17,9 @@ It can process videos and predict task (skill) steps such as the ones related to
 #### **Repo**
 
   ```
-  git clone --recursive git@github.com:fabiofelix/procedural_step_recog.git
+  git clone --recursive https://github.com/VIDA-NYU/Perception-training.git  
 
-  cd procedural_step_recog/
+  cd Perception-training/
   pip install -r requirements.txt
   pip install -e .
 
@@ -59,7 +59,7 @@ The preprocessing steps are the extraction of video frames and sound. Basically,
        ...               
   ```
 
-  1.3 Using [squash](https://sites.google.com/nyu.edu/nyu-hpc/hpc-systems/hpc-storage/data-management/squash-file-system-and-singularity) to compact the files.
+  1.3 Using [squash](https://sites.google.com/nyu.edu/nyu-hpc/hpc-systems/hpc-storage/data-management/squash-file-system-and-singularity) to compact the files in an image that can be used with singularity.
   ```
   bash scripts/extract_frames.sh /path/to/the/skill desc/Data /path/to/save/the/frames/ SKILL frame false 
 
@@ -67,7 +67,7 @@ The preprocessing steps are the extraction of video frames and sound. Basically,
   ```  
 
 > [!IMPORTANT] 
-> to execute this script, consider to use singularity with the image *ubuntu-22.04.3.sif*  or *rockylinux-9.2.sif* both available on the NYU HPC.
+> to execute this script, consider using singularity with the image *ubuntu-22.04.3.sif*  or *rockylinux-9.2.sif* both available on the NYU HPC.
 >
 > if you are not using singularity, remember to install *ffmeg*
 
@@ -97,7 +97,7 @@ Check the configuration files under `config` folder.
 bash scripts/omnimix.sh /path/to/the/frames/squash/files /path/to/the/sound/squash/files config/M2.yaml
 ```
 > [!IMPORTANT] 
-> this code consider the squash files previously created.
+> this code uses the squash files previously created.
 >
 > it is also expecting the use of the singuconda
 
@@ -128,7 +128,7 @@ python tools/test.py --cfg config/M3.yaml
 1. Main code: `toos/run_step_recog.py` (function *train_kfold*)
 2. Training/evaluation routines: `step_recog/iterators.py` (functions *train*, *evaluate*)
 3. Model classes: `step_recog/models.py`
-4. Dataloader: `step_recog/datasets/milly.py` (class *Milly_multifeature_v4* and methods *_construct_loader* and *_getitem_*)
+4. Dataloader: `step_recog/datasets/milly.py` (class *Milly_multifeature_v4* and methods *_construct_loader* and *__getitem\__*)
 5. Image augmentation: `tools/augmentation.py` (function *get_augmentation*)
 6. Basic configuration: `step_recog/config/defaults.py` (more important), `act_recog/config/defaults.py`, `auditory_slowfast/config/defaults.py`
 6. Visualizer: `step_recog/full/visualize.py` implements a specific code that combines dataloading, model prediction, and a state machine. It uses the user interface with the trained models.

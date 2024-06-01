@@ -89,7 +89,7 @@ def my_train_test_split(cfg, videos):
   video_test = None
 
   if cfg.TRAIN.CV_TEST_TYPE == "10p":
-    print("Spliting the dataset 90:10 for training/validation and testing")
+    print("|- Spliting the dataset 90:10 for training/validation and testing")
 
     if "M1" in cfg.SKILLS[0]["NAME"]:    
       videos, video_test = train_test_split(videos, test_size=0.10, random_state=2343) #M1      
@@ -162,7 +162,7 @@ def train_kfold_step(cfg, main_path = None, video_train = None, video_val = None
 #      model_name = os.path.join(cfg.OUTPUT.LOCATION, 'step_gru_best_model.pt')        
 
   del tr_data_loader
-  del tr_dataset    
+  del tr_dataset
 
   model, _ = build_model(cfg)      
   weights  = torch.load(model_name)

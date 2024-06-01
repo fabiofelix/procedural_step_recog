@@ -26,12 +26,6 @@ def custom_weights(layer):
     nn.init.xavier_normal_(layer.weight)  
     nn.init.zeros_(layer.bias)
 
-def args_hook(cfg_file):
-  args = lambda: None
-  args.cfg_file = cfg_file
-  args.opts = None   
-  return args
-
 class OmniGRU(nn.Module):
     def __init__(self, cfg, load = False):
         super().__init__()

@@ -20,7 +20,40 @@ def build_model(cfg):
 
   return model, device  
 
-def train_step(model, criterion, criterion_t, optimizer, loader, is_training, device, cfg, progress):
+def build_losses(loader, cfg, device):
+  class_weight = None
+  class_weight_tensor = None
+
+  if cfg.TRAIN.USE_CLASS_WEIGHT:
+    class_weight = np.array(loader.dataset.class_histogram) / np.sum(loader.dataset.class_histogram)
+    class_weight = np.divide(1.0, class_weight, where = class_weight != 0)  #avoid zero-division
+    class_weight = class_weight / np.sum(class_weight) ## norm in [0, 1]
+
+    print("|- Class weights", class_weight)
+
+    class_weight_tensor = torch.FloatTensor(class_weight).to(device)
+
+  return nn.CrossEntropyLoss(weight = class_weight_tensor), nn.MSELoss(), class_weight
+
+def build_optimizer(model, cfg):
+  optimizer = None
+  scheduler = None
+
+  if cfg.TRAIN.OPT == "adam":
+    optimizer = torch.optim.Adam(model.parameters(), lr=cfg.TRAIN.LR, weight_decay = cfg.TRAIN.WEIGHT_DECAY)
+  elif cfg.TRAIN.OPT == "sgd":
+    optimizer = torch.optim.SGD(model.parameters(), lr=cfg.TRAIN.LR, momentum = cfg.TRAIN.MOMENTUM, weight_decay = cfg.TRAIN.WEIGHT_DECAY)
+  elif cfg.TRAIN.OPT == "rmsprop":
+    optimizer = torch.optim.RMSprop(model.parameters(), lr=cfg.TRAIN.LR, weight_decay = cfg.TRAIN.WEIGHT_DECAY)
+
+  if cfg.TRAIN.SCHEDULER == "step":
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size = 5)
+  elif cfg.TRAIN.SCHEDULER == "exp":  
+    scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.99)
+
+  return optimizer, scheduler
+
+def train_step(model, criterion, criterion_t, optimizer, loader, is_training, device, cfg, progress, class_weight):
   if is_training:
     model.train()
     h = model.init_hidden(cfg.TRAIN.BATCH_SIZE)
@@ -32,6 +65,8 @@ def train_step(model, criterion, criterion_t, optimizer, loader, is_training, de
   sum_loss = 0.
   sum_b_acc = 0.
   sum_acc = 0.
+  label_expected = []
+  label_predicted = []
 
   for counter, (action, obj, frame, audio, label, label_t, mask, frame_idx, video_id) in enumerate(loader, 1):
     label = nn.functional.one_hot(label, model.number_classes)
@@ -64,7 +99,7 @@ def train_step(model, criterion, criterion_t, optimizer, loader, is_training, de
       loss.backward()
       optimizer.step()
 
-    ## Moving things from GPU to CPU memory anc cleaning GPU to save memory
+    ## Moving things from GPU to CPU memory and cleaning GPU to save memory
     label   = label.cpu()
     label_t = label_t.cpu()
     out     = out.cpu()
@@ -96,10 +131,12 @@ def train_step(model, criterion, criterion_t, optimizer, loader, is_training, de
         label_masked_aux.append(l)
         out_masked_aux.append(o)
 
+    label_expected.extend(label_masked_aux)
+    label_predicted.extend(out_masked_aux)
     label_masked_aux = np.array(label_masked_aux)
     out_masked_aux = np.array(out_masked_aux)
     sum_acc   += accuracy_score(label_masked_aux, out_masked_aux)      
-    sum_b_acc += weighted_accuracy(label_masked_aux, out_masked_aux, model.number_classes)
+    sum_b_acc += weighted_accuracy(label_masked_aux, out_masked_aux, class_weight)    
 
     if is_training:
       progress.update(1)
@@ -110,11 +147,16 @@ def train_step(model, criterion, criterion_t, optimizer, loader, is_training, de
 
   grad_norm = np.sqrt(np.sum([torch.norm(p.grad).cpu().item()**2 for p in model.parameters() if p.grad is not None ]))
 
-  return sum_loss/counter, sum_class_loss/counter, sum_pos_loss/counter, sum_b_acc/counter, sum_acc/counter, grad_norm  
+  if is_training:
+    return sum_loss/counter, sum_class_loss/counter, sum_pos_loss/counter, sum_b_acc/counter, sum_acc/counter, grad_norm  
+  else:
+    return sum_loss/counter, sum_class_loss/counter, sum_pos_loss/counter, sum_b_acc/counter, sum_acc/counter, grad_norm, np.array(label_expected), np.array(label_predicted) 
 
 def load_current_state(cfg, model):
   current_epoch = 0
-  history = {"train_loss":[], "train_class_loss":[], "train_pos_loss": [], "train_acc":[], "train_b_acc":[], "train_grad_norm": [], "val_loss":[], "val_class_loss":[], "val_pos_loss": [], "val_acc":[], "val_b_acc":[], "val_grad_norm": [], "best_epoch": None}  
+  history = {"train_loss":[], "train_class_loss":[], "train_pos_loss": [], "train_acc":[], "train_b_acc":[], "train_grad_norm": [], 
+             "val_loss":[], "val_class_loss":[], "val_pos_loss": [], "val_acc":[], "val_b_acc":[], "val_grad_norm": [], 
+             "best_epoch": None}  
   current_model = glob.glob(os.path.join(cfg.OUTPUT.LOCATION, 'current_model_epoch*.pt'))
 
   if len(current_model) > 0:
@@ -146,68 +188,63 @@ def save_current_state(cfg, model, history, epoch):
 
   if epoch > 1 and os.path.isfile(previous_model):
     os.remove(previous_model)
+    
+def logging(model, optimizer, scheduler, cfg):
+  data_features = ""
+  aug_data = "raw data"
+  schedule_msg = " "
+
+  if cfg.MODEL.USE_ACTION:
+    data_features = "action"
+  if cfg.MODEL.USE_OBJECTS:
+    data_features +=  "image" if data_features == "" else "+image"
+  if cfg.MODEL.USE_AUDIO:
+    data_features +=  "sound" if data_features == "" else "+sound"
+  if cfg.DATASET.INCLUDE_IMAGE_AUGMENTATIONS or cfg.DATASET.INCLUDE_TIME_AUGMENTATIONS:
+    aug_data = "aug"
+    if cfg.DATASET.INCLUDE_IMAGE_AUGMENTATIONS:
+      aug_data += " img"
+    if cfg.DATASET.INCLUDE_TIME_AUGMENTATIONS:
+      aug_data += " time"
+  if scheduler is not None:
+    schedule_msg = " - scheduler {} ".format(scheduler.__class__.__name__) 
+
+  trainable_params = 0
+  non_trainable_params = 0
+  total_params = 0
+
+  for param in model.parameters():
+    total_params += param.numel()
+
+    if param.requires_grad:
+      trainable_params += param.numel()
+    else:
+      non_trainable_params += param.numel()
+
+  print("|- Training of step recognition for {}: model {} - optimizer {}{}- features {} - {} ".format(cfg.SKILLS[0]["NAME"], model.__class__.__name__, optimizer.__class__.__name__, schedule_msg, data_features, aug_data ))
+  print("{:24s}".format("|- Trainable params:"), "{:,}".format(trainable_params))
+  print("{:24s}".format("|- Non-trainable params:"), "{:,}".format(non_trainable_params))
+  print("{:24s}".format("|- Total params:"), "{:,}".format(total_params))
 
 def train(train_loader, val_loader, cfg):
-    # Instantiating the models
+    best_model_path = os.path.join(cfg.OUTPUT.LOCATION, 'step_gru_best_model.pt')
     model, device = build_model(cfg)
-    best_model = os.path.join(cfg.OUTPUT.LOCATION, 'step_gru_best_model.pt')
-    
-    # Defining loss function and optimizer
-    class_weight = None
-  
-    if cfg.TRAIN.USE_CLASS_WEIGHT:
-      class_weight = np.sum(train_loader.dataset.class_histogram) / np.array(train_loader.dataset.class_histogram) ## 1 / freq%
-      class_weight = class_weight / np.sum(class_weight) ## norm in [0, 1]
-      print("Cross-entropy weights", class_weight)
-      class_weight = torch.FloatTensor(class_weight).to(device)
-
-    criterion = nn.CrossEntropyLoss(weight = class_weight)
-    criterion_t = nn.MSELoss()
-    scheduler = None
-
-    if cfg.TRAIN.OPT == "adam":
-      optimizer = torch.optim.Adam(model.parameters(), lr=cfg.TRAIN.LR, weight_decay = cfg.TRAIN.WEIGHT_DECAY)
-    elif cfg.TRAIN.OPT == "sgd":
-      optimizer = torch.optim.SGD(model.parameters(), lr=cfg.TRAIN.LR, momentum = cfg.TRAIN.MOMENTUM, weight_decay = cfg.TRAIN.WEIGHT_DECAY)
-    elif cfg.TRAIN.OPT == "rmsprop":
-      optimizer = torch.optim.RMSprop(model.parameters(), lr=cfg.TRAIN.LR, weight_decay = cfg.TRAIN.WEIGHT_DECAY)
-
-    if cfg.TRAIN.SCHEDULER == "step":
-      scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size = 5)
-    elif cfg.TRAIN.SCHEDULER == "exp":  
-      scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.99)
-    
-    data_features = ""
-
-    if cfg.MODEL.USE_ACTION:
-      data_features = "action"
-    if cfg.MODEL.USE_OBJECTS:
-      data_features +=  "image" if data_features == "" else "+image"
-    if cfg.MODEL.USE_AUDIO:
-      data_features +=  "sound" if data_features == "" else "+sound"
-
-    aug_data = "raw data"
-
-    if cfg.DATASET.INCLUDE_IMAGE_AUGMENTATIONS or cfg.DATASET.INCLUDE_TIME_AUGMENTATIONS:
-      aug_data = "aug"
-      if cfg.DATASET.INCLUDE_IMAGE_AUGMENTATIONS:
-        aug_data += " img"
-      if cfg.DATASET.INCLUDE_TIME_AUGMENTATIONS:
-        aug_data += " time"          
-
-    print("Training of step recognition for {}: model {} - optimizer {} - features {} - {} ".format(cfg.SKILLS[0]["NAME"], model.__class__.__name__, optimizer.__class__.__name__, data_features, aug_data ))
+    criterion, criterion_t, train_class_weight = build_losses(train_loader, cfg, device)
+    _, _, val_class_weight = build_losses(val_loader, cfg, device)
+    optimizer, scheduler = build_optimizer(model, cfg)
+    logging(model, optimizer, scheduler, cfg)
 
     model, first_epoch, history = load_current_state(cfg, model)
     progress = tqdm.tqdm(total = len(train_loader), unit= "step", bar_format='{desc}|{bar:10}| {n_fmt}/{total_fmt} [{elapsed}<{remaining} - {rate_fmt}]{postfix}' )
 
     best_val_loss = float('inf') if len(history["val_loss"]) == 0 else np.min(history["val_loss"])
-    best_val_acc  = float('inf') if len(history["val_acc"]) == 0 else np.min(history["val_acc"])
+    best_val_acc  = float('inf') if len(history["val_acc"]) == 0 else history["val_acc"][np.argmin(history["val_loss"])]
 
     for epoch in range(first_epoch, cfg.TRAIN.EPOCHS + 1):
       progress.set_description("Epoch {}/{} ".format(epoch, cfg.TRAIN.EPOCHS))
       progress.reset()
       
-      train_loss, train_class_loss, train_pos_loss, train_b_acc, train_acc, grad_norm = train_step(model=model, criterion=criterion, criterion_t=criterion_t, optimizer=optimizer, loader=train_loader, is_training=True, device=device, cfg=cfg, progress=progress)
+      train_loss, train_class_loss, train_pos_loss, train_b_acc, train_acc, grad_norm = train_step(model=model, criterion=criterion, criterion_t=criterion_t, optimizer=optimizer, loader=train_loader, is_training=True, device=device, cfg=cfg, progress=progress, class_weight=train_class_weight)
       history["train_loss"].append(train_loss)
       history["train_class_loss"].append(train_class_loss)
       history["train_pos_loss"].append(train_pos_loss)
@@ -216,7 +253,7 @@ def train(train_loader, val_loader, cfg):
       history["train_grad_norm"].append(grad_norm)
 
       with torch.no_grad():
-        val_loss, val_class_loss, val_pos_loss, val_b_acc, val_acc, grad_norm = train_step(model=model, criterion=criterion, criterion_t=criterion_t, optimizer=optimizer, loader=val_loader, is_training=False, device=device, cfg=cfg, progress=progress)
+        val_loss, val_class_loss, val_pos_loss, val_b_acc, val_acc, grad_norm, val_targets, val_outputs = train_step(model=model, criterion=criterion, criterion_t=criterion_t, optimizer=optimizer, loader=val_loader, is_training=False, device=device, cfg=cfg, progress=progress, class_weight=val_class_weight)
         
       history["val_loss"].append(val_loss)
       history["val_class_loss"].append(val_class_loss)
@@ -231,21 +268,21 @@ def train(train_loader, val_loader, cfg):
 
       if scheduler is not None:
         scheduler.step()
-        print("Learning rate: ", scheduler.get_last_lr())
+        print("|- Learning rate: ", scheduler.get_last_lr())
       if val_loss < best_val_loss:
         history["best_epoch"] = epoch
         best_val_loss = val_loss
         best_val_acc = val_acc
-        torch.save(model.state_dict(), best_model)
+        torch.save(model.state_dict(), best_model_path)
 
       save_current_state(cfg, model, history, epoch) 
 
     plot_history(history, cfg)        
 
     if cfg.TRAIN.RETURN_METRICS:
-      return best_model, best_val_loss, best_val_acc
+      return best_model_path, best_val_loss, best_val_acc
     else:
-      return best_model
+      return best_model_path
 
 @torch.no_grad()
 def evaluate(model, data_loader, cfg):
@@ -254,6 +291,7 @@ def evaluate(model, data_loader, cfg):
   
   outputs = []
   targets = []
+  _, _, class_weight =  build_losses(data_loader, cfg, device)
 
   for action, obj, frame, audio, label, _, _, frame_idx, videos in data_loader:
     h = model.init_hidden(len(action))
@@ -286,7 +324,7 @@ def evaluate(model, data_loader, cfg):
   classes = [ i for i in range(model.number_classes)]
   classes_desc = [ "Step " + str(i + 1)  for i in range(model.number_classes)]
   classes_desc[-1] = "No step"
-  save_evaluation(targets, np.argmax(outputs, axis = 1), classes, cfg, label_order = classes_desc)
+  save_evaluation(targets, np.argmax(outputs, axis = 1), classes, cfg, label_order = classes_desc, class_weight = class_weight)
 
 action_projection = None
 obj_projection = None
@@ -326,7 +364,7 @@ def gru_hook(module, input, output):
   gru_output = output[0].cpu().detach().numpy()    
 
 @torch.no_grad()
-def extract_features(model, data_loader, cfg, aggregate_avg = False):
+def extract_features(model, data_loader, cfg):
   device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
   model.eval()  
 
@@ -445,7 +483,7 @@ def extract_features(model, data_loader, cfg, aggregate_avg = False):
                             feature_concat=features_concat, gru_feature=np.array(gru_feature)
                             )
       np.savez(os.path.join(cfg.OUTPUT.LOCATION, "{}-window_label.npz".format(video_id)), frame_idx=np.array(frames), label=np.array(targets), label_desc=np.array(target_desc), label_pred=np.array(outputs), label_pred_desc=np.array(output_desc))
-      save_video_evaluation(video_id, frames, targets, outputs, cfg)
+      save_video_evaluation(video_id, frames, targets, outputs, cfg)  
 
 def plot_history(history, cfg):
   hist_file = open(os.path.join(cfg.OUTPUT.LOCATION, "history.json"), "w")
@@ -518,14 +556,14 @@ def plot_data(train, val, xlabel = None, ylabel = None, mark_best = None, palett
   if mark_best is not None:  
     plt.axvline(x = mark_best, color = palette["grey"])
 
-def save_evaluation(expected, predicted, classes, cfg, label_order = None, normalize = "true", file_name = "confusion_matrix.png", pad = None):
+def save_evaluation(expected, predicted, classes, cfg, label_order = None, normalize = "true", file_name = "confusion_matrix.png", pad = None, class_weight = None):
   file = open(os.path.join(cfg.OUTPUT.LOCATION, "metrics.txt"), "w")
 
   try:
     file.write(classification_report(expected, predicted, zero_division = 0, labels = classes, target_names = label_order)) 
     file.write("\n\n")     
     file.write("Categorical accuracy: {:.2f}\n".format(accuracy_score(expected, predicted)))
-    file.write("Weighted accuracy: {:.2f}\n".format(weighted_accuracy(expected, predicted, len(classes))))
+    file.write("Weighted accuracy: {:.2f}\n".format(weighted_accuracy(expected, predicted, class_weight)))    
     file.write("Balanced accuracy: {:.2f}\n".format(my_balanced_accuracy_score(expected, predicted)))
   finally:
     file.close() 
@@ -542,7 +580,7 @@ def save_evaluation(expected, predicted, classes, cfg, label_order = None, norma
   figure = plt.figure(figsize = (1366 / 100, 768 / 100), dpi = 100)
 
   try:
-    sb.set(font_scale = 1.4)#for label size
+    sb.set_theme(font_scale = 1.4)#for label size
     ax = plt.axes()
     ax.set_title('Predicted', fontsize = 16)  
     sb.heatmap(df, ax = ax, cmap = "Blues", annot = True, fmt = '.2f', annot_kws=None if df.shape[0] < 20 else {"size": 6}, vmin = 0.0, vmax = 1.0)# font size  linewidths
@@ -570,35 +608,37 @@ def save_video_evaluation(video_id, window_last_frame, expected, probs, cfg):
 
   figure = plt.figure(figsize = (1024 / 100, 768 / 100), dpi = 100)
 
-  plt.subplot(2, 1, 1)
-  plt.step(window_last_frame, expected, c="royalblue")
-  plt.yticks( [ i - 1 for i in range(last_expected + 1) ], classes_desc)  
+  try:
+    plt.subplot(2, 1, 1)
+    plt.step(window_last_frame, expected, c="royalblue")
+    plt.yticks( [ i - 1 for i in range(last_expected + 1) ], classes_desc)  
 
-  plt.step(window_last_frame, predicted, c="orange")
-  plt.yticks( [ i - 1 for i in range(last_predicted + 1) ], classes_desc)    
+    plt.step(window_last_frame, predicted, c="orange")
+    plt.yticks( [ i - 1 for i in range(last_predicted + 1) ], classes_desc)    
 
-  plt.legend(["target", "predicted"])
-  plt.grid(axis = "y")      
+    plt.legend(["target", "predicted"])
+    plt.grid(axis = "y")      
 
-  probs = np.max(probs, axis = 1)
+    probs = np.max(probs, axis = 1)
 
-  plt.subplot(2, 1, 2)
-  plt.plot(window_last_frame, probs, marker = 'o', c="teal")
-  plt.axhline(y = np.mean(probs), color = 'grey', linestyle = ':')  
-  plt.ylabel("Confidence")
-  plt.xlabel("last window frame")  
+    plt.subplot(2, 1, 2)
+    plt.plot(window_last_frame, probs, marker = 'o', c="teal")
+    plt.axhline(y = np.mean(probs), color = 'grey', linestyle = ':')  
+    plt.ylabel("Confidence")
+    plt.xlabel("last window frame")  
 
-  figure.tight_layout()
-  figure.savefig(os.path.join(output_location, "{}-step_variation.png".format(video_id)))    
+    figure.tight_layout()
+    figure.savefig(os.path.join(output_location, "{}-step_variation.png".format(video_id)))
+  finally:
+    plt.close()
 
-def weighted_accuracy(y_true, y_pred, number_classes):
-  sample_weight = np.ones(y_true.shape)
+def weighted_accuracy(y_true, y_pred, class_weight):
+  sample_weight = np.zeros(y_true.shape)
 
-  for cl in range(number_classes):
-    count = np.sum(y_true == cl)
-    sample_weight[y_true == cl] /= count  
+  for cl in range(len(class_weight)):
+    sample_weight[y_true == cl] = class_weight[cl]
 
-  return accuracy_score(y_true, y_pred, sample_weight = np.array(sample_weight))    
+  return accuracy_score(y_true, y_pred, sample_weight = sample_weight)
 
 ##https://github.com/scikit-learn/scikit-learn/blob/093e0cf14/sklearn/metrics/_classification.py
 ##treating division-by-zero
@@ -617,5 +657,3 @@ def my_balanced_accuracy_score(y_true, y_pred, *, sample_weight=None, adjusted=F
         score -= chance
         score /= 1 - chance
     return score  
-
-

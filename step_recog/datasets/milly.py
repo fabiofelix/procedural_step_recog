@@ -144,7 +144,7 @@ omni_path = os.path.join(os.path.expanduser("~"), ".cache/torch/hub/facebookrese
 sys.path.append(omni_path) 
 
 from ultralytics import YOLO
-from torch.quantization import quantize_dynamic
+#from torch.quantization import quantize_dynamic
 
 from step_recog.full.download import cached_download_file
 from step_recog.full.clip_patches import ClipPatches 
@@ -191,7 +191,7 @@ class Milly_multifeature_v4(Milly_multifeature):
       self.yolo = YOLO(yolo_checkpoint)
   #    self.yolo.eval = lambda *a: None   
       self.yolo.eval = yolo_eval #to work with: torch.multiprocessing.set_start_method('spawn')
-      self.yolo = quantize_dynamic(self.yolo, {torch.nn.Linear, torch.nn.Conv2d}, dtype=torch.qint8)
+#      self.yolo = quantize_dynamic(self.yolo, {torch.nn.Linear, torch.nn.Conv2d}, dtype=torch.qint8)
 
       self.clip_patches = ClipPatches()
       self.clip_patches.eval()
@@ -222,7 +222,6 @@ class Milly_multifeature_v4(Milly_multifeature):
     if self.cfg.MODEL.USE_AUDIO:
       self.slowfast.to(device)
 
-
   ##if a step S2 has its TAIL inside step S1, removes from S2 the frames overlaped with S1    
   ##So there are S1  S2_p1 and no overlap between S1 and S2
   ##
@@ -234,7 +233,7 @@ class Milly_multifeature_v4(Milly_multifeature):
   def _remove_overlap(self, vid_ann):
     aux_list = []
     vid_ann["split"] = vid_ann["verb_class"]
-
+    
     for _, step_ann in vid_ann.iterrows():
       if len(aux_list) == 0:
         aux_list.append(step_ann)
@@ -245,6 +244,11 @@ class Milly_multifeature_v4(Milly_multifeature):
           ## prev                  |----------------------|  =>             |----------------------|
           ## step_ann  |----------------------|              => |----------|            
           if step_ann.start_frame < prev.start_frame and prev.start_frame <= step_ann.stop_frame and step_ann.stop_frame <= prev.stop_frame:
+            self.overlap_summary["case1"]["count"] += 1
+
+            if step_ann.video_id not in self.overlap_summary["case1"]["videos"]:
+              self.overlap_summary["case1"]["videos"].append(step_ann.video_id)
+
             processed = True
 
             step_ann.stop_frame = prev.start_frame - 1
@@ -255,6 +259,11 @@ class Milly_multifeature_v4(Milly_multifeature):
           ## prev      |----------------------|              => |----------|
           ## step_ann              |----------------------|  =>             |----------------------|
           elif prev.start_frame < step_ann.start_frame and step_ann.start_frame <= prev.stop_frame and prev.stop_frame <= step_ann.stop_frame:
+            self.overlap_summary["case2"]["count"] += 1
+
+            if step_ann.video_id not in self.overlap_summary["case2"]["videos"]:
+              self.overlap_summary["case2"]["videos"].append(step_ann.video_id)
+
             processed = True
             p1 = prev.copy()
 
@@ -270,6 +279,11 @@ class Milly_multifeature_v4(Milly_multifeature):
           ## prev      |--------------------------|  => |---|               |------|
           ## step_ann       |-------------|          =>      |-------------|            
           elif prev.start_frame <= step_ann.start_frame and step_ann.stop_frame <= prev.stop_frame:
+            self.overlap_summary["case3"]["count"] += 1
+
+            if step_ann.video_id not in self.overlap_summary["case3"]["videos"]:
+              self.overlap_summary["case3"]["videos"].append(step_ann.video_id)
+
             processed = True
             p1 = prev.copy()
             p2 = prev.copy()
@@ -292,6 +306,11 @@ class Milly_multifeature_v4(Milly_multifeature):
           ## prev           |-------------|          =>      |-------------|                      
           ## step_ann  |--------------------------|  => |---|               |------|
           elif step_ann.start_frame <= prev.start_frame and prev.stop_frame <= step_ann.stop_frame:
+            self.overlap_summary["case4"]["count"] += 1
+
+            if step_ann.video_id not in self.overlap_summary["case4"]["videos"]:
+              self.overlap_summary["case4"]["videos"].append(step_ann.video_id)
+
             processed = True
             prev_aux = prev.copy()
 
@@ -379,6 +398,12 @@ class Milly_multifeature_v4(Milly_multifeature):
     total_window = 0
     video_ids = sorted(list(set(self.annotations.video_id)))
     pad = 0
+    self.overlap_summary = {
+      "case1": {"count": 0, "videos": []},
+      "case2": {"count": 0, "videos": []},
+      "case3": {"count": 0, "videos": []},
+      "case4": {"count": 0, "videos": []},
+    }    
 
     if split == "train":
       self.rng.shuffle(video_ids)
@@ -415,10 +440,10 @@ class Milly_multifeature_v4(Milly_multifeature):
         hop_size = self.rng.integers(len(hop_size_perc))  
 
         ##First window: starts in step_ann.start_frame - WINDOW SIZE and stops in step_ann.start_frame
-        ##Chooses a stop in [ step_ann.start_frame,  step_ann.start_frame + delta ]
-        ##start_frame < 0 is used to facilitate the process. Inside the loop it is always truncated to 1 and do_getitem pads the begining of the window.
+        ##If it is training, chooses a stop in [ step_ann.start_frame,  step_ann.start_frame + delta ]
+        ##start_frame < 0 is used to facilitate the process. Inside the loop it is always truncated to 1 and _getitem_ pads the begining of the window.
         high = min(step_ann.start_frame + start_delta, step_ann.stop_frame + 1)
-        stop_frame = self.rng.integers(low = step_ann.start_frame, high = high)
+        stop_frame = self.rng.integers(low = step_ann.start_frame, high = high) if split == "train" else step_ann.start_frame
 
         start_frame = stop_frame - step_ann.video_fps * win_size_sec[win_size] + 1
 
