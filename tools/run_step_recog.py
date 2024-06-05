@@ -5,8 +5,7 @@ import os
 import time
 from torch.utils.data import DataLoader
 from step_recog.config import load_config
-from step_recog import train, evaluate, build_model
-from step_recog.datasets import Milly_multifeature_v4, collate_fn
+from step_recog import datasets, train, evaluate, build_model
 from sklearn.model_selection import KFold, train_test_split
 import pandas as pd, pdb, numpy as np
 import math
@@ -63,8 +62,9 @@ def main():
     if cfg.TRAIN.USE_CROSS_VALIDATION:
       train_kfold(cfg, args)
     else:
-      train_kfold_step(cfg)
+      train_hold_out(cfg)
   else:
+    DATASET_CLASS = getattr(datasets, cfg.DATASET.CLASS)
     model, _ = build_model(cfg)      
     weights  = torch.load(cfg.MODEL.OMNIGRU_CHECKPOINT_URL)
     model.load_state_dict(model.update_version(weights))  
@@ -72,14 +72,14 @@ def main():
     data   = pd.read_csv(cfg.DATASET.TS_ANNOTATIONS_FILE)
     videos = data.video_id.unique()
     _, video_test = my_train_test_split(cfg, videos)    
-    ts_dataset = Milly_multifeature_v4(cfg, split='test', filter = video_test)
+    ts_dataset = DATASET_CLASS(cfg, split='test', filter = video_test)
 
     ts_data_loader = DataLoader(
             ts_dataset, 
             shuffle=False, 
             batch_size=cfg.TRAIN.BATCH_SIZE,
             num_workers=min(math.ceil(len(ts_dataset) / cfg.TRAIN.BATCH_SIZE), cfg.DATALOADER.NUM_WORKERS),
-            collate_fn=collate_fn,
+            collate_fn=datasets.collate_fn,
             drop_last=False,
             timeout=timeout)
 
@@ -119,20 +119,21 @@ def train_kfold(cfg, args, k = 10):
       video_train = videos[train_idx]
       video_val   = videos[val_idx]
 
-      train_kfold_step(cfg, os.path.join(main_path, "fold_{:02d}".format(idx) ), video_train, video_val, video_test)
+      train_hold_out(cfg, os.path.join(main_path, "fold_{:02d}".format(idx) ), video_train, video_val, video_test)
 
-def train_kfold_step(cfg, main_path = None, video_train = None, video_val = None, video_test = None):
+def train_hold_out(cfg, main_path = None, video_train = None, video_val = None, video_test = None):
+  DATASET_CLASS = getattr(datasets, cfg.DATASET.CLASS)
   timeout = 0
 
-  tr_dataset = Milly_multifeature_v4(cfg, split='train', filter=video_train)
-  vl_dataset = Milly_multifeature_v4(cfg, split='validation', filter=video_val)  
+  tr_dataset = DATASET_CLASS(cfg, split='train', filter=video_train)
+  vl_dataset = DATASET_CLASS(cfg, split='validation', filter=video_val)  
 
   tr_data_loader = DataLoader(
           tr_dataset, 
           shuffle=False, 
           batch_size=cfg.TRAIN.BATCH_SIZE,
           num_workers=min(math.ceil(len(tr_dataset) / cfg.TRAIN.BATCH_SIZE), cfg.DATALOADER.NUM_WORKERS),
-          collate_fn=collate_fn,
+          collate_fn=datasets.collate_fn,
           drop_last=True,
           timeout=timeout)
   vl_data_loader = DataLoader(
@@ -140,7 +141,7 @@ def train_kfold_step(cfg, main_path = None, video_train = None, video_val = None
           shuffle=False, 
           batch_size=cfg.TRAIN.BATCH_SIZE,
           num_workers=min(math.ceil(len(vl_dataset) / cfg.TRAIN.BATCH_SIZE), cfg.DATALOADER.NUM_WORKERS),
-          collate_fn=collate_fn,
+          collate_fn=datasets.collate_fn,
           drop_last=False,
           timeout=timeout)  
 
@@ -168,19 +169,19 @@ def train_kfold_step(cfg, main_path = None, video_train = None, video_val = None
   weights  = torch.load(model_name)
   model.load_state_dict(model.update_version(weights))      
 
-  cfg.OUTPUT.LOCATION = val_path
-  evaluate(model, vl_data_loader, cfg)      
+##  cfg.OUTPUT.LOCATION = val_path
+##  evaluate(model, vl_data_loader, cfg)      
 
   del vl_data_loader
   del vl_dataset      
 
-  ts_dataset = Milly_multifeature_v4(cfg, split='test', filter = video_test)
+  ts_dataset = DATASET_CLASS(cfg, split='test', filter = video_test)
   ts_data_loader = DataLoader(
           ts_dataset, 
           shuffle=False, 
           batch_size=cfg.TRAIN.BATCH_SIZE,
           num_workers=min(math.ceil(len(ts_dataset) / cfg.TRAIN.BATCH_SIZE), cfg.DATALOADER.NUM_WORKERS),
-          collate_fn=collate_fn,
+          collate_fn=datasets.collate_fn,
           drop_last=False,
           timeout=timeout)
       

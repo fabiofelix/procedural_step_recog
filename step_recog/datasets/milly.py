@@ -1,9 +1,8 @@
 import os 
 import torch
 import tqdm
-import numpy as np
+import numpy as np, numba
 import pandas as pd
-import copy
 import glob
 import ipdb
 import cv2
@@ -110,38 +109,61 @@ def collate_fn(data):
 
 ##TODO: It's returning the whole video
 class Milly_multifeature(torch.utils.data.Dataset):
-
     def __init__(self, cfg, split='train', filter=None):
-        self.cfg = cfg        
-        self.data_filter = filter
+      self.cfg = cfg        
+      self.data_filter = filter
 
-        if split == 'train':
-          self.annotations_file = cfg.DATASET.TR_ANNOTATIONS_FILE
-        elif split == 'validation':
-          self.annotations_file = cfg.DATASET.TR_ANNOTATIONS_FILE if cfg.DATASET.VL_ANNOTATIONS_FILE == '' else cfg.DATASET.VL_ANNOTATIONS_FILE
-        elif split == 'test':
-          self.annotations_file = cfg.DATASET.VL_ANNOTATIONS_FILE if cfg.DATASET.TS_ANNOTATIONS_FILE == '' else cfg.DATASET.TS_ANNOTATIONS_FILE
+      if split == 'train':
+        self.annotations_file = cfg.DATASET.TR_ANNOTATIONS_FILE
+      elif split == 'validation':
+        self.annotations_file = cfg.DATASET.TR_ANNOTATIONS_FILE if cfg.DATASET.VL_ANNOTATIONS_FILE == '' else cfg.DATASET.VL_ANNOTATIONS_FILE
+      elif split == 'test':
+        self.annotations_file = cfg.DATASET.VL_ANNOTATIONS_FILE if cfg.DATASET.TS_ANNOTATIONS_FILE == '' else cfg.DATASET.TS_ANNOTATIONS_FILE
 
-        self.image_augs = cfg.DATASET.INCLUDE_IMAGE_AUGMENTATIONS if split == 'train' else False
-        self.time_augs = cfg.DATASET.INCLUDE_TIME_AUGMENTATIONS if split == 'train' else False
+      self.image_augs = cfg.DATASET.INCLUDE_IMAGE_AUGMENTATIONS if split == 'train' else False
+      self.time_augs = cfg.DATASET.INCLUDE_TIME_AUGMENTATIONS if split == 'train' else False
 
-        self.rng = np.random.default_rng()
-        self._construct_loader(split)
+      self.rng = np.random.default_rng()
+      self._construct_loader(split)
 
     def _construct_loader(self, split):
       self.datapoints = {}
       self.class_histogram = []
-      pass
+      self.overlap_summary = {}
 
     def __len__(self):
-        return len(self.datapoints)
+      return len(self.datapoints)
 
 import sys
 from collections import deque
 
-#to work with: torch.multiprocessing.set_start_method('spawn')
+##https://stackoverflow.com/questions/44131691/how-to-clear-cache-or-force-recompilation-in-numba  
+##https://numba.pydata.org/numba-doc/0.48.0/developer/caching.html#cache-clearing
+##https://numba.pydata.org/numba-doc/0.48.0/reference/envvars.html#envvar-NUMBA_CACHE_DIR
+#to save numba cache out the /home folder
+main_cache_path = os.path.join("/vast", os.path.basename(os.path.expanduser("~")))
+clip_download_root = None
 omni_path = os.path.join(os.path.expanduser("~"), ".cache/torch/hub/facebookresearch_omnivore_main")
-sys.path.append(omni_path) 
+
+if os.path.isdir(main_cache_path):
+  cache_path = os.path.join(main_cache_path, "cache")
+
+  if not os.path.isdir(cache_path):
+    os.mkdir(cache_path)
+
+  numba.config.CACHE_DIR = cache_path   #default: ~/.cache
+  clip_download_root = os.path.join(cache_path, "clip") #default: ~/.cache/clip
+  
+  cache_path = os.path.join(cache_path, "torch", "hub")
+
+  if not os.path.isdir(cache_path):
+    os.makedirs(cache_path)
+
+  torch.hub.set_dir(cache_path) #default: ~/.cache/torch/hub  
+  omni_path = os.path.join(cache_path, "facebookresearch_omnivore_main")
+
+#to work with: torch.multiprocessing.set_start_method('spawn')
+sys.path.append(omni_path)
 
 from ultralytics import YOLO
 #from torch.quantization import quantize_dynamic
@@ -174,6 +196,7 @@ def slowfast_hook(module, input, output):
   embedding = input[0]
   batch_size, _, _, _ = embedding.shape
   output = embedding.reshape(batch_size, -1)
+  global SOUND_FEATURES_LIST
   SOUND_FEATURES_LIST.extend(output.cpu().detach().numpy()) 
 
 class Milly_multifeature_v4(Milly_multifeature):
@@ -193,7 +216,7 @@ class Milly_multifeature_v4(Milly_multifeature):
       self.yolo.eval = yolo_eval #to work with: torch.multiprocessing.set_start_method('spawn')
 #      self.yolo = quantize_dynamic(self.yolo, {torch.nn.Linear, torch.nn.Conv2d}, dtype=torch.qint8)
 
-      self.clip_patches = ClipPatches()
+      self.clip_patches = ClipPatches(download_root=clip_download_root)
       self.clip_patches.eval()
 
     if self.cfg.MODEL.USE_ACTION:
@@ -699,7 +722,7 @@ class Milly_multifeature_v4(Milly_multifeature):
     window_step_label = torch.from_numpy(np.array(window_step_label))
     window_position_label = torch.from_numpy(np.array(window_position_label))
     window_stop_frame = torch.from_numpy(np.array(window_stop_frame))
-    video_id = np.array([window["video_id"]])
+    video_id = np.array([video["video_id"]])
 
 
     return video_act, video_obj, video_frame, video_sound, window_step_label, window_position_label, window_stop_frame, video_id

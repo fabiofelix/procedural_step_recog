@@ -11,9 +11,9 @@ class ClipPatches(nn.Module):
     TODO: this could be implemented with a "whole frame bounding box".
 
     '''
-    def __init__(self):
+    def __init__(self, download_root = None):
         super().__init__()
-        self.model, self.transform = clip.load("ViT-B/16", jit=False)
+        self.model, self.transform = clip.load("ViT-B/16", jit=False, download_root=download_root)
         self._device = nn.Parameter(torch.empty(0))
 
     def stack_patches(self, patches):

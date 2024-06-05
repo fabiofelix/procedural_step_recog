@@ -55,6 +55,7 @@ _C.MODEL.SLOWFAST_CONFIG = 'SLOWFAST'
 # Dataset options
 # -----------------------------------------------------------------------------
 _C.DATASET = CfgNode()
+_C.DATASET.CLASS = 'Milly_multifeature_v4'
 _C.DATASET.NAME = ''
 _C.DATASET.LOCATION = ''
 _C.DATASET.AUDIO_LOCATION = ''

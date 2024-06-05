@@ -7,7 +7,7 @@ import os
 import pdb, ipdb
 import json
 import scipy
-from sklearn.metrics import confusion_matrix, classification_report, balanced_accuracy_score, accuracy_score
+from sklearn.metrics import confusion_matrix, classification_report, balanced_accuracy_score, accuracy_score, precision_score, recall_score
 from matplotlib import pyplot as plt
 import seaborn as sb, pandas as pd
 import warnings
@@ -20,15 +20,18 @@ def build_model(cfg):
 
   return model, device  
 
+def get_class_weight(class_histogram):
+  class_weight = np.array(class_histogram) / np.sum(class_histogram)
+  class_weight = np.divide(1.0, class_weight, where = class_weight != 0)  #avoid zero-division
+
+  return class_weight / np.sum(class_weight) ## norm in [0, 1]  
+
 def build_losses(loader, cfg, device):
   class_weight = None
   class_weight_tensor = None
 
   if cfg.TRAIN.USE_CLASS_WEIGHT:
-    class_weight = np.array(loader.dataset.class_histogram) / np.sum(loader.dataset.class_histogram)
-    class_weight = np.divide(1.0, class_weight, where = class_weight != 0)  #avoid zero-division
-    class_weight = class_weight / np.sum(class_weight) ## norm in [0, 1]
-
+    class_weight = get_class_weight(loader.dataset.class_histogram)
     print("|- Class weights", class_weight)
 
     class_weight_tensor = torch.FloatTensor(class_weight).to(device)
@@ -275,6 +278,15 @@ def train(train_loader, val_loader, cfg):
         best_val_acc = val_acc
         torch.save(model.state_dict(), best_model_path)
 
+        ##Saving validation metrics
+        classes = [ i for i in range(model.number_classes)]
+        classes_desc = [ "Step " + str(i + 1)  for i in range(model.number_classes)]
+        classes_desc[-1] = "No step"
+        original_output = cfg.OUTPUT.LOCATION
+        cfg.OUTPUT.LOCATION = os.path.join(original_output, "validation" )
+        save_evaluation(val_targets, val_outputs, classes, cfg, label_order = classes_desc, class_weight = val_class_weight)
+        cfg.OUTPUT.LOCATION = original_output        
+
       save_current_state(cfg, model, history, epoch) 
 
     plot_history(history, cfg)        
@@ -293,7 +305,7 @@ def evaluate(model, data_loader, cfg):
   targets = []
   _, _, class_weight =  build_losses(data_loader, cfg, device)
 
-  for action, obj, frame, audio, label, _, _, frame_idx, videos in data_loader:
+  for action, obj, frame, audio, label, _, mask, frame_idx, videos in data_loader:
     h = model.init_hidden(len(action))
 
     out, _ = model(action.to(device).float(), h, audio.to(device).float(), obj.to(device).float(), frame.to(device).float(), return_last_step = False)
@@ -302,13 +314,13 @@ def evaluate(model, data_loader, cfg):
     frame_idx = frame_idx.cpu().numpy()
     torch.cuda.empty_cache()
 
-    for video_id, video_frames, frame_target, frame_pred in zip(videos, frame_idx, label, out):
+    for video_id, video_frames, frame_target, frame_pred, video_masks in zip(videos, frame_idx, label, out, mask):
       aux_frame = []
       aux_targets = []
       aux_outputs = []
 
-      for frame, target, pred in zip(video_frames, frame_target, frame_pred):
-        if frame > 0: #it's equal to test the mask value, like in train_step
+      for frame, target, pred, mask in zip(video_frames, frame_target, frame_pred, video_masks):
+        if mask > 0: #it's equal to test the mask value, like in train_step
           aux_frame.append(frame)
           aux_targets.append(target)
           aux_outputs.append(pred)
@@ -316,7 +328,7 @@ def evaluate(model, data_loader, cfg):
           targets.append(target)
           outputs.append(pred)
 
-      save_video_evaluation(video_id, aux_frame, aux_targets, aux_outputs, cfg)  
+      save_video_evaluation(video_id, aux_frame, aux_targets, aux_outputs, cfg)
 
   targets = np.array(targets)
   outputs = np.array(outputs)
@@ -605,6 +617,16 @@ def save_video_evaluation(video_id, window_last_frame, expected, probs, cfg):
   predicted[predicted == last_predicted] = -1
 
   classes_desc = [ "No step" if i == 0 else "Step " + str(i)  for i in range(last_expected + 1)]  
+  accuracy  = accuracy_score(expected, predicted)
+  acc_desc  = "acc"
+
+  if cfg.TRAIN.USE_CLASS_WEIGHT:
+    acc_desc     = "weighted acc"
+    class_weight = get_class_weight([ np.sum(expected == c) for c in np.unique(expected) ])
+    accuracy     = weighted_accuracy(expected, predicted, class_weight=class_weight)
+
+  precision = precision_score(expected, predicted, average=None)
+  recall    = recall_score(expected, predicted, average=None)
 
   figure = plt.figure(figsize = (1024 / 100, 768 / 100), dpi = 100)
 
@@ -614,9 +636,17 @@ def save_video_evaluation(video_id, window_last_frame, expected, probs, cfg):
     plt.yticks( [ i - 1 for i in range(last_expected + 1) ], classes_desc)  
 
     plt.step(window_last_frame, predicted, c="orange")
-    plt.yticks( [ i - 1 for i in range(last_predicted + 1) ], classes_desc)    
+    plt.yticks( [ i - 1 for i in range(last_predicted + 1) ], classes_desc)
+    
+    plt.plot(1, np.min([expected, predicted]), 'white')
+    plt.plot(1, np.min([expected, predicted]), 'white')
+    plt.plot(1, np.min([expected, predicted]), 'white')
 
-    plt.legend(["target", "predicted"])
+    plt.legend(["target", "predicted", 
+                "{} {:.2f}".format(acc_desc, accuracy ),
+                "precision {:.2f}+/-{:.2f}".format( precision.mean(), precision.std() ),
+                "recall {:.2f}+/-{:.2f}".format( recall.mean(), recall.std() )
+                ])
     plt.grid(axis = "y")      
 
     probs = np.max(probs, axis = 1)
