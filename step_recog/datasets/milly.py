@@ -726,3 +726,108 @@ class Milly_multifeature_v4(Milly_multifeature):
 
 
     return video_act, video_obj, video_frame, video_sound, window_step_label, window_position_label, window_stop_frame, video_id
+
+class Milly_multifeature_v5(Milly_multifeature):
+  def _construct_loader(self, split):
+    video_ids = []
+
+    for v in ["alabama", "bbnlabs"]:
+      video_ids.extend( glob.glob(os.path.join(self.cfg.DATASET.LOCATION, v, "*")) )
+
+    if self.data_filter is None:
+      annotations = pd.read_csv(self.annotations_file, usecols=['video_id','start_frame','stop_frame','narration','verb_class','video_fps'])
+      video_ids = [f for f in video_ids if os.path.basename(f) in annotations.video_id.unique()]
+    else:
+      video_ids = [f for f in video_ids if os.path.basename(f) in self.data_filter]
+
+    self.datapoints = {}
+    self.class_histogram = [0] * (self.cfg.MODEL.OUTPUT_DIM + 1)
+    ipoint = 0
+    total_window = 0
+    video_ids = sorted(video_ids)
+
+    if split == "train":
+      self.rng.shuffle(video_ids)
+
+    win_size_sec  = [1, 2, 4] if self.time_augs else [2]
+    hop_size_perc = [0.125, 0.25, 0.5] if self.time_augs else [0.5]      
+
+    progress = tqdm.tqdm(video_ids, total=len(video_ids), desc = "Video")
+
+    label2idx = {step: idx for skill in self.cfg.SKILLS for idx, step in enumerate(skill['STEPS'])}
+    label2idx["No step"] = len(label2idx)
+
+    for v in video_ids:
+      progress.update(1)
+
+      embeddings   = glob.glob(os.path.join(v, "features", "*.npy"))
+      embeddings   = np.load(embeddings[0], allow_pickle=True)  
+      video_frames = [f[-1] for f in embeddings[()]["frames"]]
+
+      label = np.load(os.path.join(v, "normalized_frame_labels.npy"), allow_pickle=True)
+      label = label[video_frames]
+
+      win_size = self.rng.integers(len(win_size_sec))
+      hop_size = self.rng.integers(len(hop_size_perc)) 
+      
+      for l in label:
+        self.class_histogram[label2idx[l]] += 1
+
+      self.datapoints[ipoint] = {
+        'video_id': v,
+        'win_size': win_size_sec[win_size],
+        'hop_size': int(hop_size_perc[hop_size] * win_size_sec[win_size]),
+        'label': [ label2idx[l] for l in label  ]
+      }
+      ipoint += 1
+      total_window += label.shape[0]
+      progress.set_postfix({"window total": total_window, "padded videos": 0})          
+
+  def __getitem__(self, index):
+    video = self.datapoints[index]
+    video_obj = []
+    video_frame = []
+    video_act = []
+    video_sound = []
+    window_step_label = video["label"]
+    window_position_label = [[0, 0]] * len(window_step_label)    
+    window_stop_frame = []
+
+    apply_img_aug = False
+    img_aug_idx = None
+
+    if self.image_augs and self.rng.choice([True, False], p = [self.cfg.DATASET.IMAGE_AUGMENTATION_PERCENTAGE, 1.0 - self.cfg.DATASET.IMAGE_AUGMENTATION_PERCENTAGE]):
+      apply_img_aug = True
+
+    if self.cfg.MODEL.USE_OBJECTS: 
+      image_embeddings = glob.glob(os.path.join(video["video_id"], "features", "*_{}_{}.npy".format(video["win_size"], video["hop_size"])))
+#      obj_embeddings, frame_embeddings
+
+    if self.cfg.MODEL.USE_ACTION:
+      action_embeddings = glob.glob(os.path.join(video["video_id"], "features", "*_{}_{}.npy".format(video["win_size"], video["hop_size"])))
+
+      if apply_img_aug:
+        action_embeddings = [act for act in action_embeddings if "original" not in act]
+        img_aug_idx       = self.rng.integers(len(action_embeddings)) if img_aug_idx is None else img_aug_idx
+        action_embeddings = action_embeddings[img_aug_idx]
+      else:  
+        action_embeddings = [act for act in action_embeddings if "original" in act]
+        action_embeddings = action_embeddings[0]
+
+      action_embeddings = np.load(action_embeddings, allow_pickle=True)  
+      video_act.extend(action_embeddings[()]["embeddings"])
+
+    if self.cfg.MODEL.USE_AUDIO:
+      audio_embeddings = glob.glob(os.path.join(video["video_id"], "features", "*_{}_{}.npy".format(video["win_size"], video["hop_size"])))
+
+    video_obj   = torch.from_numpy(np.array(video_obj))
+    video_frame = torch.from_numpy(np.array(video_frame))
+    video_act   = torch.from_numpy(np.array(video_act))
+    video_sound = torch.from_numpy(np.array(video_sound))
+    window_step_label = torch.from_numpy(np.array(window_step_label))
+    window_position_label = torch.from_numpy(np.array(window_position_label))
+    window_stop_frame = torch.from_numpy(np.array(window_stop_frame))
+    video_id = np.array([ os.path.basename(video["video_id"]) ])
+
+    return video_act, video_obj, video_frame, video_sound, window_step_label, window_position_label, window_stop_frame, video_id
+

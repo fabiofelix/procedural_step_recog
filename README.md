@@ -5,7 +5,9 @@ This is the code for training and evaluation of the preception models built on t
 It can process videos and predict task (skill) steps such as the ones related to [tactical field care](https://www.ncbi.nlm.nih.gov/books/NBK532260/).
 
 > [!NOTE] 
-> These are the used skills:  Trauma Assessment (M1), Apply tourniquet (M2), Pressure Dressing (M3), X-Stat (M5), and Apply Chest seal (R18)
+> These are the used skills:  
+> (June/2024 demo) Apply tourniquet (M2), Pressure Dressing (M3), X-Stat (M5), and Apply Chest seal (R18)
+> (December/2024 demo) Nasopharyngeal Airway (NPA) (A8), Wound Packing (M4), Ventilate (BVM) (R16), Needle Chest Decompression (R19)
 
 ## **Install**
 
