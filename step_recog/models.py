@@ -2,31 +2,18 @@
 #Code from https://github.com/VIDA-NYU/ptg-server-ml/tree/main/ptgprocess #
 #=========================================================================#
 
-import os
-import sys
-import glob
-import numpy as np
 import torch
-import math
-import pdb
-from torch import nn
-
-import gdown
-import yaml
+import ipdb
 from collections import OrderedDict
-
-##mod_path = os.path.join(os.path.dirname(__file__), 'procedural_step_recog')
-mod_path = os.path.join(os.path.dirname(__file__), '..')
-sys.path.insert(0,  mod_path)
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 def custom_weights(layer):
-  if isinstance(layer, nn.Linear):
-    nn.init.xavier_normal_(layer.weight)  
-    nn.init.zeros_(layer.bias)
+  if isinstance(layer, torch.nn.Linear):
+    torch.nn.init.xavier_normal_(layer.weight)  
+    torch.nn.init.zeros_(layer.bias)
 
-class OmniGRU(nn.Module):
+class OmniGRU(torch.nn.Module):
     def __init__(self, cfg, load = False):
         super().__init__()
 
@@ -49,33 +36,33 @@ class OmniGRU(nn.Module):
 
         if self.use_action:
           gru_input_dim += project_dim
-          self.action_fc = nn.Linear(action_size, project_dim)
-          self.action_drop_out = nn.Dropout(cfg.MODEL.DROP_OUT)
+          self.action_fc = torch.nn.Linear(action_size, project_dim)
+          self.action_drop_out = torch.nn.Dropout(cfg.MODEL.DROP_OUT)
           if self.use_bn: 
-            self.action_bn = nn.BatchNorm1d(project_dim)
+            self.action_bn = torch.nn.BatchNorm1d(project_dim)
 
         if self.use_audio:
           gru_input_dim += project_dim
-          self.audio_fc = nn.Linear(audio_size, project_dim)
-          self.audio_drop_out = nn.Dropout(cfg.MODEL.DROP_OUT)
+          self.audio_fc = torch.nn.Linear(audio_size, project_dim)
+          self.audio_drop_out = torch.nn.Dropout(cfg.MODEL.DROP_OUT)
           if self.use_bn: 
-              self.aud_bn = nn.BatchNorm1d(project_dim)
+              self.aud_bn = torch.nn.BatchNorm1d(project_dim)
 
         if self.use_objects:
           gru_input_dim += project_dim
-          self.obj_proj   = nn.Linear(img_size, project_dim)    
-          self.frame_proj = nn.Linear(img_size, project_dim)  
-          self.obj_fc     = nn.Linear(project_dim, project_dim)
-          self.obj_drop_out = nn.Dropout(cfg.MODEL.DROP_OUT)
+          self.obj_proj   = torch.nn.Linear(img_size, project_dim)    
+          self.frame_proj = torch.nn.Linear(img_size, project_dim)  
+          self.obj_fc     = torch.nn.Linear(project_dim, project_dim)
+          self.obj_drop_out = torch.nn.Dropout(cfg.MODEL.DROP_OUT)
           if self.use_bn: 
-            self.obj_bn = nn.BatchNorm1d(project_dim)            
+            self.obj_bn = torch.nn.BatchNorm1d(project_dim)            
 
         if gru_input_dim == 0:
            raise Exception("GRU has to use at least one input (action, object/frame, or audio)")             
 
-        self.gru = nn.GRU(gru_input_dim, cfg.MODEL.HIDDEN_SIZE, self.n_gru_layers, batch_first=True, dropout=cfg.MODEL.DROP_OUT)
-        self.fc = nn.Linear(cfg.MODEL.HIDDEN_SIZE, self.number_classes + self.number_position)
-        self.relu = nn.ReLU()
+        self.gru = torch.nn.GRU(gru_input_dim, cfg.MODEL.HIDDEN_SIZE, self.n_gru_layers, batch_first=True, dropout=cfg.MODEL.DROP_OUT)
+        self.fc = torch.nn.Linear(cfg.MODEL.HIDDEN_SIZE, self.number_classes + self.number_position)
+        self.relu = torch.nn.ReLU()
 
         if load:
           self.load_state_dict( self.update_version(torch.load( cfg.MODEL.OMNIGRU_CHECKPOINT_URL )))
@@ -110,9 +97,9 @@ class OmniGRU(nn.Module):
 #            obj_in = torch.sum(obj_proj * values, dim=-2)
 
             #=============================== Conceptual Fusion ===============================#
-            theta = nn.functional.cosine_similarity(frame_proj, obj_proj, dim = -1)
+            theta = torch.nn.functional.cosine_similarity(frame_proj, obj_proj, dim = -1)
 
-            phi   = nn.functional.cosine_similarity(obj_proj[:, :, None, :, :], obj_proj[:, :, :, None, :], dim = -1)
+            phi   = torch.nn.functional.cosine_similarity(obj_proj[:, :, None, :, :], obj_proj[:, :, :, None, :], dim = -1)
             phi   = torch.mean(phi, dim = -1)
 
             w     = torch.softmax(theta + phi, dim = -1)

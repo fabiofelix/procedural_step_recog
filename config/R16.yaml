@@ -1,0 +1,22 @@
+_BASE_: STEPGRU_BASE.yaml
+MODEL:
+  OMNIGRU_CHECKPOINT_URL: 
+  OUTPUT_DIM: 5
+  YOLO_CHECKPOINT_URL: '/home/user/models/bbn_yolo_R16.pt'  
+
+DATASET:
+  TR_ANNOTATIONS_FILE: "/home/user/labels/R16_professional_videos.csv"
+  VL_ANNOTATIONS_FILE: "/home/user/labels/R16_professional_videos.csv"
+  TS_ANNOTATIONS_FILE: "/home/user/labels/R16_professional_videos.csv"
+
+OUTPUT:
+  LOCATION: "/home/user/output"
+
+SKILLS:
+  - NAME: R16 - Ventilate (BVM)
+    STEPS:
+      - Place casualty into 'sniffing position' with head tilted back and nostrils exposed.
+      - Open the BVM packaging.
+      - Attach mask to BVM and expand BVM to full size.
+      - Place mask over patient’s mouth in proper orientation.
+      - Squeeze BVM while holding mask to patient’s mouth.        

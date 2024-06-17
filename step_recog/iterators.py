@@ -143,10 +143,12 @@ def train_step(model, criterion, criterion_t, optimizer, loader, is_training, de
 
     if is_training:
       progress.update(1)
+      accuracy_desc = "{}acc".format("weighted " if cfg.TRAIN.USE_CLASS_WEIGHT else ""  )
+      acc_avg = (sum_b_acc if cfg.TRAIN.USE_CLASS_WEIGHT else sum_acc  )/counter
       progress.set_postfix({"Cross entropy": sum_class_loss/counter, 
                             "MSE": sum_pos_loss/counter, 
                             "Total loss": sum_loss/counter, 
-                            "acc": sum_acc/counter})
+                            accuracy_desc: acc_avg})
 
   grad_norm = np.sqrt(np.sum([torch.norm(p.grad).cpu().item()**2 for p in model.parameters() if p.grad is not None ]))
 
@@ -164,12 +166,11 @@ def load_current_state(cfg, model):
 
   if len(current_model) > 0:
     current_model.sort()
-    current_epoch = current_model[-1].split('current_model_epoch')
     weights = torch.load(current_model[-1])
     model.load_state_dict(model.update_version(weights))
 
-    current_model = current_model[-1].split('current_model_epoch')
-    current_model = current_model[-1].split('.')
+    current_model = current_model[-1].split('current_model_epoch') #[ <path>, '20.pt' ]
+    current_model = current_model[-1].split('.') #[ '20', 'pt' ]
     current_epoch = int(current_model[0])
 
     hist_file = os.path.join(cfg.OUTPUT.LOCATION, "history.json")
@@ -265,8 +266,9 @@ def train(train_loader, val_loader, cfg):
       history["val_b_acc"].append(val_b_acc)      
       history["val_grad_norm"].append(grad_norm)
 
-      progress.set_postfix({"Cross entropy": train_class_loss, "MSE": train_pos_loss, "Total loss": train_loss, "acc": train_acc, 
-                            "val Cross entropy": val_class_loss, "val MSE": val_pos_loss, "val Total loss": val_loss, "val acc": val_acc})
+      accuracy_desc = "{}acc".format("weighted " if cfg.TRAIN.USE_CLASS_WEIGHT else ""  )
+      progress.set_postfix({"Cross entropy": train_class_loss, "MSE": train_pos_loss, "Total loss": train_loss, accuracy_desc: (train_b_acc if cfg.TRAIN.USE_CLASS_WEIGHT else train_acc), 
+                            "val Cross entropy": val_class_loss, "val MSE": val_pos_loss, "val Total loss": val_loss, "val {}".format(accuracy_desc): (val_b_acc if cfg.TRAIN.USE_CLASS_WEIGHT else val_acc)})
       print("")
 
       if scheduler is not None:
@@ -513,10 +515,11 @@ def plot_history(history, cfg):
   plot_data(history["train_loss"], history["val_loss"], ylabel = "Total Loss", mark_best = history["best_epoch"])    
 
   plt.subplot(2, 3, 4)    
-  plot_data(history["train_acc"], history["val_acc"], xlabel = "Epoch", ylabel = "Categorical accuracy", mark_best = history["best_epoch"])     
 
-##  plt.subplot(2, 3, 5)    
-##  plot_data(history["train_b_acc"], history["val_b_acc"], xlabel = "Epoch", ylabel = "Balanced accuracy", mark_best = history["best_epoch"])       
+  if cfg.TRAIN.USE_CLASS_WEIGHT:
+    plot_data(history["train_b_acc"], history["val_b_acc"], xlabel = "Epoch", ylabel = "Weighted accuracy", mark_best = history["best_epoch"])       
+  else:
+    plot_data(history["train_acc"], history["val_acc"], xlabel = "Epoch", ylabel = "Categorical accuracy", mark_best = history["best_epoch"])     
 
   plt.subplot(2, 3, 5)    
   plot_data(history["train_grad_norm"], [], xlabel = "Epoch", ylabel = "Gradient norm", mark_best = history["best_epoch"])       
@@ -541,7 +544,11 @@ def summary_history(history, cfg=None):
   plot_data(history["train_loss"], history["val_loss"], xlabel = "Epoch", ylabel = "Total Loss", mark_best = history["best_epoch"])    
 
   plt.subplot(1, 2, 2)   
-  plot_data(history["train_acc"], history["val_acc"], xlabel = "Epoch", ylabel = "Categorical accuracy", mark_best = history["best_epoch"])     
+
+  if cfg.TRAIN.USE_CLASS_WEIGHT:
+    plot_data(history["train_b_acc"], history["val_b_acc"], xlabel = "Epoch", ylabel = "Weighted accuracy", mark_best = history["best_epoch"])         
+  else:
+    plot_data(history["train_acc"], history["val_acc"], xlabel = "Epoch", ylabel = "Categorical accuracy", mark_best = history["best_epoch"])     
 
   figure.tight_layout()
   figure.savefig(os.path.join(path, "history_chart_short.png"))

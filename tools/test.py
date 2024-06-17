@@ -4,9 +4,8 @@ import os
 from torch.utils.data import DataLoader
 
 from step_recog.config import load_config
-from step_recog import build_model, extract_features
-from step_recog.datasets import Milly_multifeature_v4
-from run_step_recog import parse_args, collate_fn, my_train_test_split
+from step_recog import datasets, build_model, extract_features
+from run_step_recog import parse_args, my_train_test_split
 
 def main():
   """
@@ -22,14 +21,15 @@ def main():
   timeout = 0
   data   = pd.read_csv(cfg.DATASET.TS_ANNOTATIONS_FILE)
   _, video_test = my_train_test_split(cfg, data.video_id.unique())
+  DATASET_CLASS = getattr(datasets, cfg.DATASET.CLASS)
 
-  ts_dataset = Milly_multifeature_v4(cfg, split='test', filter=video_test)
+  ts_dataset = DATASET_CLASS(cfg, split='test', filter=video_test)
   ts_data_loader = DataLoader(
           ts_dataset, 
           shuffle=False, 
           batch_size=cfg.TRAIN.BATCH_SIZE,
           num_workers=cfg.DATALOADER.NUM_WORKERS,
-          collate_fn=collate_fn,
+          collate_fn=datasets.collate_fn,
           drop_last=False,
           timeout=timeout)          
 

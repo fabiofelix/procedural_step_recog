@@ -120,8 +120,8 @@ class Milly_multifeature(torch.utils.data.Dataset):
       elif split == 'test':
         self.annotations_file = cfg.DATASET.VL_ANNOTATIONS_FILE if cfg.DATASET.TS_ANNOTATIONS_FILE == '' else cfg.DATASET.TS_ANNOTATIONS_FILE
 
-      self.image_augs = cfg.DATASET.INCLUDE_IMAGE_AUGMENTATIONS if split == 'train' else False
-      self.time_augs = cfg.DATASET.INCLUDE_TIME_AUGMENTATIONS if split == 'train' else False
+      self.image_augs = split == 'train' and cfg.DATASET.INCLUDE_IMAGE_AUGMENTATIONS
+      self.time_augs  = split == 'train' and cfg.DATASET.INCLUDE_TIME_AUGMENTATIONS
 
       self.rng = np.random.default_rng()
       self._construct_loader(split)

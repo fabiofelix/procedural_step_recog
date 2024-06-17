@@ -1,0 +1,20 @@
+_BASE_: STEPGRU_BASE.yaml
+MODEL:
+  OMNIGRU_CHECKPOINT_URL: 
+  OUTPUT_DIM: 3
+  YOLO_CHECKPOINT_URL: '/home/user/models/bbn_yolo_M4.pt'  
+
+DATASET:
+  TR_ANNOTATIONS_FILE: "/home/user/labels/M4_professional_videos.csv"
+  VL_ANNOTATIONS_FILE: "/home/user/labels/M4_professional_videos.csv"
+  TS_ANNOTATIONS_FILE: "/home/user/labels/M4_professional_videos.csv"
+
+OUTPUT:
+  LOCATION: "/home/user/output"
+
+SKILLS:
+  - NAME: M4 - Wound Packing
+    STEPS:
+      - Apply direct hand pressure.
+      - Open dressing packaging.
+      - Pack wound.         

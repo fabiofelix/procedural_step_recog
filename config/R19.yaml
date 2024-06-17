@@ -1,0 +1,24 @@
+_BASE_: STEPGRU_BASE.yaml
+MODEL:
+  OMNIGRU_CHECKPOINT_URL: 
+  OUTPUT_DIM: 6
+  YOLO_CHECKPOINT_URL: '/home/user/models/bbn_yolo_R19.pt'  
+
+DATASET:
+  TR_ANNOTATIONS_FILE: "/home/user/labels/R19_professional_videos.csv"
+  VL_ANNOTATIONS_FILE: "/home/user/labels/R19_professional_videos.csv"
+  TS_ANNOTATIONS_FILE: "/home/user/labels/R19_professional_videos.csv"
+
+OUTPUT:
+  LOCATION: "/home/user/output"
+
+SKILLS:
+  - NAME: R19 - Needle Chest Decompression
+    STEPS:
+      - Locate insertion site at the second intercostal space at the midclavicular line.
+      - Wipe the insertion site with an alcohol wipe.
+      - Prepare catheter and needle.
+      - Insert needle into insertion site and leave for 5-10 seconds.
+      - Remove needle, keeping catheter inside the patient.
+      - Apply tape around catheter to secure it in place.
+

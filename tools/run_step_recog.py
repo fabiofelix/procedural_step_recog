@@ -8,6 +8,7 @@ from step_recog.config import load_config
 from step_recog import datasets, train, evaluate, build_model
 from sklearn.model_selection import KFold, train_test_split
 import pandas as pd, pdb, numpy as np
+import tqdm
 import math
 
 def parse_args():

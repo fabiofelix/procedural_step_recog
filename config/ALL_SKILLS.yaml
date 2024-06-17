@@ -1,18 +1,26 @@
 _BASE_: STEPGRU_BASE.yaml
 MODEL:
   OMNIGRU_CHECKPOINT_URL: '/home/user/models/step_gru_best_model.pt' 
-  OUTPUT_DIM: 36
+  OUTPUT_DIM: 55
   YOLO_CHECKPOINT_URL: '/home/user/models/bbn_yolo_ALL.pt'
 
 DATASET:
-  TR_ANNOTATIONS_FILE: "/home/user/labels/BBN_with_epic-structure_V2_FPS.csv"
-  VL_ANNOTATIONS_FILE: "/home/user/labels/BBN_with_epic-structure_V2_FPS.csv"
-  TS_ANNOTATIONS_FILE: "/home/user/labels/BBN_with_epic-structure_V2_FPS.csv"
+  TR_ANNOTATIONS_FILE: "/home/user/labels/All_skills.csv"
+  VL_ANNOTATIONS_FILE: "/home/user/labels/All_skills.csv"
+  TS_ANNOTATIONS_FILE: "/home/user/labels/All_skills.csv"
 
 OUTPUT:
   LOCATION: "/home/user/output"
 
 SKILLS:
+  - NAME: A8 - Nasopharyngeal Airway (NPA)
+    STEPS:
+    - Select NPA tube that best fits casualty.
+    - Place casualty into 'sniffing position' with head tilted back and nostrils exposed.
+    - Cover NPA with lube.
+    - Insert NPA perpendicular to casualty nostril until flange meets tip of nose, rotating along the way.
+    - Look, listen, and feel for airway compliance.      
+
   - NAME: M1 - Trauma Assessment
     STEPS:
     - Optionally unclothe depending on situation.
@@ -50,6 +58,11 @@ SKILLS:
     - Wrap dressing around affected area extremity or trunk with 80 percent elastic stretch.
     - Secure dressing with securing device.
 
+  - NAME: M4 - Wound Packing
+    STEPS:
+    - Apply direct hand pressure.
+    - Open dressing packaging.
+    - Pack wound.      
 
   - NAME: M5 - X-Stat
     STEPS:
@@ -59,6 +72,13 @@ SKILLS:
     - Push plunger firmly to deploy sponges into wound.
     - Apply manual pressure if necessary.    
 
+  - NAME: R16 - Ventilate (BVM)
+    STEPS:
+    - Place casualty into 'sniffing position' with head tilted back and nostrils exposed.
+    - Open the BVM packaging.
+    - Attach mask to BVM and expand BVM to full size.
+    - Place mask over patient’s mouth in proper orientation.
+    - Squeeze BVM while holding mask to patient’s mouth.   
 
   - NAME: R18 - Apply chest seal
     STEPS:
@@ -68,3 +88,11 @@ SKILLS:
     - Peel away chest seal backer.
     - Place chest seal with circle of vents over wound site and seal to chest.
 
+  - NAME: R19 - Needle Chest Decompression
+    STEPS:
+    - Locate insertion site at the second intercostal space at the midclavicular line.
+    - Wipe the insertion site with an alcohol wipe.
+    - Prepare catheter and needle.
+    - Insert needle into insertion site and leave for 5-10 seconds.
+    - Remove needle, keeping catheter inside the patient.
+    - Apply tape around catheter to secure it in place.
