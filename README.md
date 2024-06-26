@@ -6,8 +6,8 @@ It can process videos and predict task (skill) steps such as the ones related to
 
 > [!NOTE] 
 > These are the used skills:  
-> (June/2024 demo) Apply tourniquet (M2), Pressure Dressing (M3), X-Stat (M5), and Apply Chest seal (R18)
-> (December/2024 demo) Nasopharyngeal Airway (NPA) (A8), Wound Packing (M4), Ventilate (BVM) (R16), Needle Chest Decompression (R19)
+> - (June/2024 demo) Apply tourniquet (M2), Pressure Dressing (M3), X-Stat (M5), and Apply Chest seal (R18)
+> - (December/2024 demo) Nasopharyngeal Airway (NPA) (A8), Wound Packing (M4), Ventilate with Bag-Valve-Mask (BVM) (R16), Needle Chest Decompression (R19)
 
 ## **Install**
 
@@ -130,7 +130,9 @@ python tools/test.py --cfg config/M3.yaml
 1. Main code: `toos/run_step_recog.py` (function *train_kfold*)
 2. Training/evaluation routines: `step_recog/iterators.py` (functions *train*, *evaluate*)
 3. Model classes: `step_recog/models.py`
-4. Dataloader: `step_recog/datasets/milly.py` (class *Milly_multifeature_v4* and methods *_construct_loader* and *__getitem\__*)
+4. Dataloader: `step_recog/datasets/milly.py` (methods *_construct_loader* and *__getitem\__*)
+- class *Milly_multifeature_v4* loads video frames and returns formated features
+- class *Milly_multifeature_v5* loads (preprocessed) features and returns formated features 
 5. Image augmentation: `tools/augmentation.py` (function *get_augmentation*)
 6. Basic configuration: `step_recog/config/defaults.py` (more important), `act_recog/config/defaults.py`, `auditory_slowfast/config/defaults.py`
 6. Visualizer: `step_recog/full/visualize.py` implements a specific code that combines dataloading, model prediction, and a state machine. It uses the user interface with the trained models.

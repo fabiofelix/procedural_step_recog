@@ -586,7 +586,16 @@ def save_evaluation(expected, predicted, classes, cfg, label_order = None, norma
     file.write("Balanced accuracy: {:.2f}\n".format(my_balanced_accuracy_score(expected, predicted)))
   finally:
     file.close() 
+
   #========================================================================================================================#
+  cm = confusion_matrix(expected, predicted, normalize = None, labels = classes)
+
+  df = pd.DataFrame(cm, columns = label_order, index = label_order)
+  df.index.name   = 'Expected'
+  df.columns.name = 'Predicted'
+  df.to_csv(os.path.join(cfg.OUTPUT.LOCATION, file_name.replace('.png', '_raw.csv')))
+  #========================================================================================================================#
+
   cm = confusion_matrix(expected, predicted, normalize = normalize, labels = classes)
 
   if pad is not None:

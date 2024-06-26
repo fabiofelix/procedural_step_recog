@@ -5,15 +5,15 @@ MODEL:
   YOLO_CHECKPOINT_URL: '/home/user/models/bbn_yolo_R16.pt'  
 
 DATASET:
-  TR_ANNOTATIONS_FILE: "/home/user/labels/R16_professional_videos.csv"
-  VL_ANNOTATIONS_FILE: "/home/user/labels/R16_professional_videos.csv"
-  TS_ANNOTATIONS_FILE: "/home/user/labels/R16_professional_videos.csv"
+  TR_ANNOTATIONS_FILE: "/home/user/labels/R16_Alabama_videos.csv"
+  VL_ANNOTATIONS_FILE: "/home/user/labels/R16_Alabama_videos.csv"
+  TS_ANNOTATIONS_FILE: "/home/user/labels/R16_Alabama_videos.csv"
 
 OUTPUT:
   LOCATION: "/home/user/output"
 
 SKILLS:
-  - NAME: R16 - Ventilate (BVM)
+  - NAME: R16 - Ventilate with Bag-Valve-Mask (BVM)
     STEPS:
       - Place casualty into 'sniffing position' with head tilted back and nostrils exposed.
       - Open the BVM packaging.

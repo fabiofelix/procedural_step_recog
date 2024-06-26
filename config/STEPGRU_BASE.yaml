@@ -11,6 +11,7 @@ MODEL:
   SLOWFAST_CONFIG: '/home/user/data/auditory_slowfast/configs/BBN/SLOWFAST_R50.yaml'
 DATASET:
   NAME: 'Milly'
+  CLASS: 'Milly_multifeature_v4'
   LOCATION: '/frame' 
   AUDIO_LOCATION: '/sound'
   INCLUDE_IMAGE_AUGMENTATIONS: True
