@@ -134,36 +134,8 @@ class Milly_multifeature(torch.utils.data.Dataset):
     def __len__(self):
       return len(self.datapoints)
 
-import sys
+from step_recog import utils
 from collections import deque
-
-##https://stackoverflow.com/questions/44131691/how-to-clear-cache-or-force-recompilation-in-numba  
-##https://numba.pydata.org/numba-doc/0.48.0/developer/caching.html#cache-clearing
-##https://numba.pydata.org/numba-doc/0.48.0/reference/envvars.html#envvar-NUMBA_CACHE_DIR
-#to save numba cache out the /home folder
-main_cache_path = os.path.join("/vast", os.path.basename(os.path.expanduser("~")))
-clip_download_root = None
-omni_path = os.path.join(os.path.expanduser("~"), ".cache/torch/hub/facebookresearch_omnivore_main")
-
-if os.path.isdir(main_cache_path):
-  cache_path = os.path.join(main_cache_path, "cache")
-
-  if not os.path.isdir(cache_path):
-    os.mkdir(cache_path)
-
-  numba.config.CACHE_DIR = cache_path   #default: ~/.cache
-  clip_download_root = os.path.join(cache_path, "clip") #default: ~/.cache/clip
-  
-  cache_path = os.path.join(cache_path, "torch", "hub")
-
-  if not os.path.isdir(cache_path):
-    os.makedirs(cache_path)
-
-  torch.hub.set_dir(cache_path) #default: ~/.cache/torch/hub  
-  omni_path = os.path.join(cache_path, "facebookresearch_omnivore_main")
-
-#to work with: torch.multiprocessing.set_start_method('spawn')
-sys.path.append(omni_path)
 
 from ultralytics import YOLO
 #from torch.quantization import quantize_dynamic
@@ -216,7 +188,7 @@ class Milly_multifeature_v4(Milly_multifeature):
       self.yolo.eval = yolo_eval #to work with: torch.multiprocessing.set_start_method('spawn')
 #      self.yolo = quantize_dynamic(self.yolo, {torch.nn.Linear, torch.nn.Conv2d}, dtype=torch.qint8)
 
-      self.clip_patches = ClipPatches(download_root=clip_download_root)
+      self.clip_patches = ClipPatches(download_root=utils.clip_download_root)
       self.clip_patches.eval()
 
     if self.cfg.MODEL.USE_ACTION:
@@ -457,6 +429,7 @@ class Milly_multifeature_v4(Milly_multifeature):
       nframes = len(glob.glob(os.path.join(self.cfg.DATASET.LOCATION, v, "*.jpg")))
       vid_ann = self._fill_gap(vid_ann.copy(), nframes)
       video_windows = []
+      previous_stop_frame = 1
 
       for _, step_ann in vid_ann.iterrows():
         win_size = self.rng.integers(len(win_size_sec))
@@ -464,16 +437,17 @@ class Milly_multifeature_v4(Milly_multifeature):
 
         ##First window: starts in step_ann.start_frame - WINDOW SIZE and stops in step_ann.start_frame
         ##If it is training, chooses a stop in [ step_ann.start_frame,  step_ann.start_frame + delta ]
+        ##If not, stop is always incremented by the hop_size
         ##start_frame < 0 is used to facilitate the process. Inside the loop it is always truncated to 1 and _getitem_ pads the begining of the window.
         high = min(step_ann.start_frame + start_delta, step_ann.stop_frame + 1)
-        stop_frame = self.rng.integers(low = step_ann.start_frame, high = high) if split == "train" else step_ann.start_frame
+        stop_frame = self.rng.integers(low = step_ann.start_frame, high = high) if split == "train" else previous_stop_frame
 
         start_frame = stop_frame - step_ann.video_fps * win_size_sec[win_size] + 1
 
         stop_sound_point  = 0 if step_ann.start_frame == 1 else int(self.slowfast_cfg.AUDIO_DATA.SAMPLING_RATE * step_ann.start_frame / step_ann.video_fps)
         start_sound_point = int(stop_sound_point - self.slowfast_cfg.AUDIO_DATA.SAMPLING_RATE * (win_size_sec[win_size] - 0.001)) #adjusted (-0.001) because of Slowfast set up
 
-        process_last_frames = stop_frame != step_ann.stop_frame
+        process_last_frames = stop_frame != step_ann.stop_frame if split == "train" else idx == (vid_ann.shape[0] - 1)
         win_idx  = 0
 
         while stop_frame <= step_ann.stop_frame:
@@ -508,7 +482,7 @@ class Milly_multifeature_v4(Milly_multifeature):
           stop_frame   = int(start_frame - 1 + step_ann.video_fps * win_size_sec[win_size])
 
           start_sound_point += int(self.slowfast_cfg.AUDIO_DATA.SAMPLING_RATE * win_size_sec[win_size] * hop_size_perc[hop_size])
-          stop_sound_point  = int(start_sound_point + self.slowfast_cfg.AUDIO_DATA.SAMPLING_RATE * (win_size_sec[win_size] - 0.001)) #adjusted (-0.001) because of Slowfast set up          
+          stop_sound_point   = int(start_sound_point + self.slowfast_cfg.AUDIO_DATA.SAMPLING_RATE * (win_size_sec[win_size] - 0.001)) #adjusted (-0.001) because of Slowfast set up          
 
           #Don't loose any frame in the end of the video. 
           if previous_stop_frame < step_ann.stop_frame and start_frame < step_ann.stop_frame and step_ann.stop_frame < stop_frame and process_last_frames:
@@ -519,6 +493,9 @@ class Milly_multifeature_v4(Milly_multifeature):
 
             stop_sound_point  = int(self.slowfast_cfg.AUDIO_DATA.SAMPLING_RATE * step_ann.stop_frame / step_ann.video_fps)
             start_sound_point = int(stop_sound_point - self.slowfast_cfg.AUDIO_DATA.SAMPLING_RATE * (win_size_sec[win_size] - 0.001)) #adjusted (-0.001) because of Slowfast set up
+
+          ##If split != 'train', it guarantees that the next step stops in the right place
+          previous_stop_frame = stop_frame
 
       self.datapoints[ipoint] = {
         'video_id': v,
