@@ -117,7 +117,7 @@ class OmniGRU(torch.nn.Module):
 
     def init_hidden(self, batch_size):
         weight = next(self.parameters()).data
-        hidden = weight.new(self.n_gru_layers, batch_size, self.cfg.MODEL.HIDDEN_SIZE).zero_().to(self._device.device if self._device else device)
+        hidden = weight.new(self.n_gru_layers, batch_size, self.cfg.MODEL.HIDDEN_SIZE).zero_().to(device if self._device is None else self._device.device)
         return hidden
 
     def update_version(self, state_dict):
