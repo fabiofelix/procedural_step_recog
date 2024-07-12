@@ -1,6 +1,6 @@
 MODEL:
   HIDDEN_SIZE: 1024
-  CONTEXT_LENGTH: 'full'
+  PROJECTION_SIZE: 512
   USE_ACTION: True  ##default true
   USE_OBJECTS: True  ##default true
   USE_AUDIO: False  ##default false
@@ -10,7 +10,6 @@ MODEL:
   OMNIVORE_CONFIG: '/home/user/data/config/OMNIVORE.yaml'
   SLOWFAST_CONFIG: '/home/user/data/auditory_slowfast/configs/BBN/SLOWFAST_R50.yaml'
 DATASET:
-  NAME: 'Milly'
   CLASS: 'Milly_multifeature_v4'
   LOCATION: '/frame' 
   AUDIO_LOCATION: '/sound'

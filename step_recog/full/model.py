@@ -12,6 +12,7 @@ from act_recog.datasets.transform import uniform_crop
 
 from step_recog.config import load_config
 from step_recog.models import OmniGRU
+from step_recog import utils
 
 from step_recog.full.clip_patches import ClipPatches
 from step_recog.full.download import cached_download_file
@@ -48,15 +49,15 @@ class StepPredictor(nn.Module):
         # build model
         self.head = OmniGRU(self.cfg, load=True)
         self.head.eval()
-        if self.head.use_action:
+        if self.cfg.MODEL.USE_ACTION:
             self.omnivore = Omnivore(self.omni_cfg)
-        if self.head.use_objects:
+        if self.cfg.MODEL.USE_OBJECTS:
             yolo_checkpoint = cached_download_file(self.cfg.MODEL.YOLO_CHECKPOINT_URL)
             self.yolo = YOLO(yolo_checkpoint)
             self.yolo.eval = lambda *a: None
-            self.clip_patches = ClipPatches()
+            self.clip_patches = ClipPatches(utils.clip_download_root)
             self.clip_patches.eval()
-        if self.head.use_audio:
+        if self.cfg.MODEL.USE_AUDIO:
             raise NotImplementedError()
         
         # frame buffers and model state
@@ -70,7 +71,7 @@ class StepPredictor(nn.Module):
     def queue_frame(self, image):
       X_omnivore = image
 
-      if self.head.use_action:
+      if self.cfg.MODEL.USE_ACTION:
         X_omnivore = self.omnivore.prepare_image(image, bgr2rgb=False)
 
       if len(self.omnivore_input_queue) == 0:
@@ -90,7 +91,7 @@ class StepPredictor(nn.Module):
     def forward(self, image, queue_omni_frame = True):
         # compute yolo
         Z_objects, Z_frame = torch.zeros((1, 1, 25, 0)).float(), torch.zeros((1, 1, 1, 0)).float()
-        if self.head.use_objects:
+        if self.cfg.MODEL.USE_OBJECTS:
             results = self.yolo(image, verbose=False)
             boxes = results[0].boxes
             Z_clip = self.clip_patches(image, boxes.xywh.cpu().numpy(), include_frame=True)
@@ -106,12 +107,12 @@ class StepPredictor(nn.Module):
 
         # compute audio embeddings
         Z_audio = torch.zeros((1, 1, 0)).float()
-        if self.head.use_audio:
+        if self.cfg.MODEL.USE_AUDIO:
             Z_audio = None
 
         # compute video embeddings
         Z_action = torch.zeros((1, 1, 0)).float()
-        if self.head.use_action:
+        if self.cfg.MODEL.USE_ACTION:
             # rolling buffer of omnivore input frames
             if queue_omni_frame:
               self.queue_frame(image)
