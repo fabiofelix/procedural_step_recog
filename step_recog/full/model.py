@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+import functools
 from torch import nn
 from collections import deque
 from ultralytics import YOLO
@@ -22,6 +23,14 @@ def args_hook(cfg_file):
   args.opts = None   
   return args
 
+
+@functools.lru_cache(1)
+def get_omnivore(cfg_fname):
+    omni_cfg = act_load_config(args_hook(cfg_fname))
+    omnivore = Omnivore(omni_cfg)
+    return omnivore, omni_cfg
+
+
 class StepPredictor(nn.Module):
     """Step prediction model that takes in frames and outputs step probabilities.
     """
@@ -30,7 +39,7 @@ class StepPredictor(nn.Module):
         # load config
         self._device = nn.Parameter(torch.empty(0))
         self.cfg = load_config(args_hook(cfg_file))
-        self.omni_cfg = act_load_config(args_hook(self.cfg.MODEL.OMNIVORE_CONFIG))
+        #self.omni_cfg = act_load_config(args_hook(self.cfg.MODEL.OMNIVORE_CONFIG))
 
         # assign vocabulary
         self.STEPS = np.array([
@@ -48,20 +57,43 @@ class StepPredictor(nn.Module):
         # build model
         self.head = OmniGRU(self.cfg, load=True)
         self.head.eval()
+        frame_queue_len = 1
         if self.head.use_action:
-            self.omnivore = Omnivore(self.omni_cfg)
+            omnivore, omni_cfg = get_omnivore(self.cfg.MODEL.OMNIVORE_CONFIG)
+            self.omnivore = omnivore
+            self.omni_cfg = omni_cfg
+            frame_queue_len = self.omni_cfg.DATASET.FPS * self.omni_cfg.MODEL.WIN_LENGTH
+            frame_queue_len = video_fps * self.omni_cfg.MODEL.WIN_LENGTH #default: 2seconds
+            #self.omnivore = Omnivore(self.omni_cfg)
         if self.head.use_objects:
             yolo_checkpoint = cached_download_file(self.cfg.MODEL.YOLO_CHECKPOINT_URL)
             self.yolo = YOLO(yolo_checkpoint)
             self.yolo.eval = lambda *a: None
             self.clip_patches = ClipPatches()
             self.clip_patches.eval()
+            names = self.yolo.names
+            self.OBJECT_LABELS = np.array([str(names.get(i, i)) for i in range(len(names))])
+        else:
+            self.OBJECT_LABELS = np.array([], dtype=str)
         if self.head.use_audio:
             raise NotImplementedError()
         
         # frame buffers and model state
-        self.omnivore_input_queue = deque(maxlen=video_fps * self.omni_cfg.MODEL.WIN_LENGTH)#default: 2seconds
+        self.frame_queue_len = frame_queue_len
+        self.omnivore_input_queue = deque(maxlen=frame_queue_len)
         self.h = None  
+
+    def eval(self):
+        y=self.yolo
+        self.yolo = None
+        super().eval()
+        self.head.eval()
+        self.omnivore.eval()
+        self.yolo=y
+        return self
+
+    def has_omni_maxlen(self):
+        return len(self.omnivore_input_queue) >= self.frame_queue_len
 
     def reset(self):
       self.omnivore_input_queue.clear()
@@ -87,7 +119,7 @@ class StepPredictor(nn.Module):
 
       return im      
 
-    def forward(self, image, queue_omni_frame = True):
+    def forward(self, image, queue_omni_frame = True, return_objects=False):
         # compute yolo
         Z_objects, Z_frame = torch.zeros((1, 1, 25, 0)).float(), torch.zeros((1, 1, 1, 0)).float()
         if self.head.use_objects:
@@ -117,6 +149,7 @@ class StepPredictor(nn.Module):
               self.queue_frame(image)
 
             # compute omnivore embeddings
+            # [1, 32, 3, H, W]
             X_omnivore = torch.stack(list(self.omnivore_input_queue), dim=1)[None]
             frame_idx = np.linspace(0, self.omnivore_input_queue.maxlen - 1, self.omni_cfg.MODEL.NFRAMES).astype('long') #same as act_recog.dataset.milly.py:pack_frames_to_video_clip
             X_omnivore = X_omnivore[:, :, frame_idx, :, :]
@@ -126,7 +159,17 @@ class StepPredictor(nn.Module):
         # mix it all together
         if self.h is None:
           self.h = self.head.init_hidden(Z_action.shape[0])
-          
-        prob_step, self.h = self.head(Z_action.to(self._device.device), self.h.float(), Z_audio.to(self._device.device), Z_objects.to(self._device.device), Z_frame.to(self._device.device))
-        prob_step = torch.softmax(prob_step[..., :-2].detach(), dim=-1) #prob_step has <n classe positions> <1 no step position> <2 begin-end frame identifiers>
+        
+        device = self._device.device
+        prob_step, self.h = self.head(
+            Z_action.to(device), 
+            self.h.float(), 
+            Z_audio.to(device), 
+            Z_objects.to(device), 
+            Z_frame.to(device))
+        
+        prob_step = torch.softmax(prob_step[..., :-2], dim=-1) #prob_step has <n classe positions> <1 no step position> <2 begin-end frame identifiers>
+        
+        if return_objects:
+            return prob_step, results
         return prob_step

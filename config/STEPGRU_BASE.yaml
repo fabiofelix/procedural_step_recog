@@ -7,7 +7,8 @@ MODEL:
   USE_BN: False      ##default false
   DROP_OUT: 0.5
 
-  OMNIVORE_CONFIG: '/home/user/data/config/OMNIVORE.yaml'
+  #OMNIVORE_CONFIG: '/home/user/data/config/OMNIVORE.yaml'
+  OMNIVORE_CONFIG: OMNIVORE
   SLOWFAST_CONFIG: '/home/user/data/auditory_slowfast/configs/BBN/SLOWFAST_R50.yaml'
 DATASET:
   NAME: 'Milly'
