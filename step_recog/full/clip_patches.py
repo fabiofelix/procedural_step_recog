@@ -22,12 +22,17 @@ class ClipPatches(nn.Module):
             for x in patches
         ])
     
-    def forward(self, image, xywh=None, patch_shape=None, include_frame=False):
+    def forward(self, image, xywh=None, patch_shape=None, include_frame=False):        
+        if isinstance(image, Image.Image):
+          image = np.array(image)
+
         patches = [] if xywh is None else extract_patches(image, xywh, patch_shape)
+
         if include_frame:
             patches.insert(0, image)
         if not patches: 
             return torch.zeros((0, 512), device=self._device.device)
+        
         X = self.stack_patches(patches)
         Z = self.model.encode_image(X)
         return Z

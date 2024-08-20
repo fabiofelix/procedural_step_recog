@@ -1,0 +1,28 @@
+_BASE_: STEPGRU_BASE.yaml
+MODEL:
+  OMNIGRU_CHECKPOINT_URL: 'models/M2.pt'
+  OUTPUT_DIM: 8
+  YOLO_CHECKPOINT_URL: 'models/bbn_yolo_M2.pt'  
+
+DATASET:
+  TR_ANNOTATIONS_FILE: "labels/M2_Alabama+BBN_videos_M2-19.csv"
+  VL_ANNOTATIONS_FILE: "labels/M2_Alabama+BBN_videos_M2-19.csv"
+  TS_ANNOTATIONS_FILE: "labels/M2_Alabama+BBN_videos_M2-19.csv"
+
+OUTPUT:
+  LOCATION: "output"
+
+TRAIN:
+  ENABLE: False
+
+SKILLS:
+  - NAME: M2 - Apply Tourniquet
+    STEPS:
+    - Place tourniquet over affected extremity 2-3 inches above wound site.
+    - Pull tourniquet tight.
+    - Apply strap to strap body.
+    - Turn windless clock wise or counter clockwise until hemorrhage is controlled.
+    - Lock windless into the windless keeper.
+    - Pull remaining strap over the windless keeper.
+    - Secure strap and windless keeper with keeper securing device.
+    - Mark time on securing device strap with permanent marker.    

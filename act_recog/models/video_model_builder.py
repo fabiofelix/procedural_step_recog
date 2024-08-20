@@ -14,14 +14,19 @@ from torch.nn.init import constant_
 from torch.nn.init import normal_
 from torch.utils import model_zoo
 from copy import deepcopy
+from PIL import Image
 import pdb
 
 from .build import MODEL_REGISTRY
 from act_recog.datasets.transform import uniform_crop
+from torchvision import transforms
+
+def max_norm(x):
+  return x / x.max()
 
 @MODEL_REGISTRY.register()
 class Omnivore(nn.Module):
-    def __init__(self, cfg):
+    def __init__(self, cfg, resize = True):
         super().__init__()
 
         # model
@@ -32,6 +37,21 @@ class Omnivore(nn.Module):
 
         self.heads = self.model.heads
         self.model.heads = nn.Identity()
+        self.transform = transforms.Compose([
+          transforms.ToPILImage(),
+          transforms.Resize(self.cfg.MODEL.IN_SIZE),
+          transforms.CenterCrop(self.cfg.MODEL.IN_SIZE),
+          transforms.ToTensor(),
+          transforms.Lambda(max_norm),
+          transforms.Normalize(mean=self.cfg.MODEL.MEAN, std=self.cfg.MODEL.STD),
+        ])
+
+        if not resize:
+          self.transform = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Lambda(max_norm),
+            transforms.Normalize(mean=self.cfg.MODEL.MEAN, std=self.cfg.MODEL.STD),
+          ])                  
 
     def forward(self, x, return_embedding=False):  # C T H W
         shoulder = self.model(x, input_type="video")
@@ -39,8 +59,16 @@ class Omnivore(nn.Module):
         if return_embedding:
             return y, shoulder
         return y
-    
+
     def prepare_image(self, im, bgr2rgb = True):
+        # 1,C,H,W
+        if isinstance(im, Image.Image):
+          im = np.array(im)
+
+        im = self.transform(im).float()
+        return im
+
+    def prepare_image_v2(self, im, bgr2rgb = True):
         # 1,C,H,W
         im = prepare_image(im, self.cfg.MODEL.MEAN, self.cfg.MODEL.STD, self.cfg.MODEL.IN_SIZE, bgr2rgb)
         return im    
