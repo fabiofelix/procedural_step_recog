@@ -5,6 +5,8 @@ from collections import deque
 from ultralytics import YOLO
 import ipdb
 import cv2
+from torchvision import transforms
+from PIL import Image
 
 from act_recog.models import Omnivore
 from act_recog.config import load_config as act_load_config
@@ -45,12 +47,16 @@ class StepPredictor(nn.Module):
             for step in skill['STEPS']
         ])
         self.MAX_OBJECTS = 25
+        self.transform = transforms.Compose([
+          transforms.Resize(self.omni_cfg.MODEL.IN_SIZE),
+          transforms.CenterCrop(self.omni_cfg.MODEL.IN_SIZE)
+        ])            
         
         # build model
         self.head = OmniGRU(self.cfg, load=True)
         self.head.eval()
         if self.cfg.MODEL.USE_ACTION:
-            self.omnivore = Omnivore(self.omni_cfg)
+            self.omnivore = Omnivore(self.omni_cfg, resize = False)
         if self.cfg.MODEL.USE_OBJECTS:
             yolo_checkpoint = cached_download_file(self.cfg.MODEL.YOLO_CHECKPOINT_URL)
             self.yolo = YOLO(yolo_checkpoint)
@@ -80,13 +86,7 @@ class StepPredictor(nn.Module):
         self.omnivore_input_queue.append(X_omnivore) 
 
     def prepare(self, im):
-      expected_size=224
-      im    = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)        
-      scale = max(expected_size/im.shape[0], expected_size/im.shape[1])
-      im    = cv2.resize(im, (0,0), fx=scale, fy=scale)
-      im, _ = uniform_crop(im, expected_size, 1)
-
-      return im      
+      return self.transform(Image.fromarray(im))
 
     def forward(self, image, queue_omni_frame = True):
         # compute yolo

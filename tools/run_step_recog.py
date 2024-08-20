@@ -102,8 +102,10 @@ def my_train_test_split(cfg, videos):
       videos, video_test = train_test_split(videos, test_size=0.10, random_state=2359) #M5  1030: only with BBN 041624.zip
     elif "R18" in cfg.SKILLS[0]["NAME"]:      
       videos, video_test = train_test_split(videos, test_size=0.10, random_state=2343) #R18 1740: only with BBN seal_videos.zip
-    else: #A8, M4, R16, R19      
-      videos, video_test = train_test_split(videos, test_size=0.10, random_state=1030) 
+    elif "A8" in cfg.SKILLS[0]["NAME"]:
+      videos, video_test = train_test_split(videos, test_size=0.10, random_state=2329) #A8:
+    else: #M4, R16, R19      
+      videos, video_test = train_test_split(videos, test_size=0.10, random_state=1030)
 
   return videos, video_test
 

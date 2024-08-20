@@ -140,6 +140,8 @@ from collections import deque
 from ultralytics import YOLO
 #from torch.quantization import quantize_dynamic
 
+from torchvision import transforms
+
 from step_recog.full.download import cached_download_file
 from step_recog.full.clip_patches import ClipPatches 
 
@@ -180,6 +182,10 @@ class Milly_multifeature_v4(Milly_multifeature):
 
     self.augment_configs = {}
     self.device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    self.transform = transforms.Compose([
+      transforms.Resize(self.omni_cfg.MODEL.IN_SIZE),
+      transforms.CenterCrop(self.omni_cfg.MODEL.IN_SIZE)
+    ])    
 
     if self.cfg.MODEL.USE_OBJECTS:
       yolo_checkpoint = cached_download_file(cfg.MODEL.YOLO_CHECKPOINT_URL)
@@ -192,7 +198,7 @@ class Milly_multifeature_v4(Milly_multifeature):
       self.clip_patches.eval()
 
     if self.cfg.MODEL.USE_ACTION:
-      self.omnivore = Omnivore(self.omni_cfg)
+      self.omnivore = Omnivore(self.omni_cfg, resize = False)
       self.omnivore.eval()
 
     self.sound_cache = deque(maxlen=5)
@@ -431,7 +437,7 @@ class Milly_multifeature_v4(Milly_multifeature):
       video_windows = []
       previous_stop_frame = 1
 
-      for _, step_ann in vid_ann.iterrows():
+      for idx, step_ann in vid_ann.iterrows():
         win_size = self.rng.integers(len(win_size_sec))
         hop_size = self.rng.integers(len(hop_size_perc))  
 
@@ -537,15 +543,6 @@ class Milly_multifeature_v4(Milly_multifeature):
 
     return frames
 
-  #Both CLIP and Omnivore resize to 224, 224
-  #With this code, Yolo is using the same size
-  def _resize_img(self, im, expected_size=224):
-    scale = max(expected_size/im.shape[0], expected_size/im.shape[1])
-    im    = cv2.resize(im, (0,0), fx=scale, fy=scale)
-    im, _ = uniform_crop(im, expected_size, 1)
-
-    return im
-
   def _get_sound_cache(self, video, path):
     sound = None
 
@@ -587,9 +584,10 @@ class Milly_multifeature_v4(Milly_multifeature):
 ##          frame = cv2.imread(frame_path)
 ##          frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
           frame = Image.open(frame_path)
+          frame = self.transform(frame)
           frame = np.array(frame)
-          frame = self._resize_img(frame)
           self.frame_cache[frame_id] = {"frame": frame, "new": True}
+
         window_frames.append(frame)
         window_frame_ids.append(frame_id)
 
@@ -628,7 +626,7 @@ class Milly_multifeature_v4(Milly_multifeature):
 
   def _extract_act_features(self, window_frames):
     frame_idx  = np.linspace(0, len(window_frames) - 1, self.omni_cfg.MODEL.NFRAMES).astype('long')
-    X_omnivore = [ self.omnivore.prepare_image(frame, bgr2rgb = False) for frame in  window_frames ]
+    X_omnivore = [ self.omnivore.prepare_image(frame) for frame in  window_frames ]
     X_omnivore = torch.stack(list(X_omnivore), dim=1)[None]
     X_omnivore = X_omnivore[:, :, frame_idx, :, :]
     _, Z_action = self.omnivore(X_omnivore.to(self.device), return_embedding=True)

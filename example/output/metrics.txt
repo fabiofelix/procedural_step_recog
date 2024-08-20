@@ -1,0 +1,20 @@
+              precision    recall  f1-score   support
+
+      Step 1       1.00      1.00      1.00        10
+      Step 2       0.38      1.00      0.56         5
+      Step 3       0.50      0.14      0.22         7
+      Step 4       0.75      0.86      0.80         7
+      Step 5       0.33      1.00      0.50         5
+      Step 6       0.00      0.00      0.00         0
+      Step 7       0.00      0.00      0.00         0
+      Step 8       0.60      1.00      0.75         3
+     No step       0.97      0.63      0.76        46
+
+    accuracy                           0.71        83
+   macro avg       0.50      0.63      0.51        83
+weighted avg       0.83      0.71      0.72        83
+
+
+Categorical accuracy: 0.71
+Weighted accuracy: 0.80
+Balanced accuracy: 0.80
