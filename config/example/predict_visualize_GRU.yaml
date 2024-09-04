@@ -2,11 +2,11 @@ _BASE_: STEPGRU_BASE.yaml
 MODEL:
   OMNIGRU_CHECKPOINT_URL: 
   OUTPUT_DIM: 5
-  YOLO_CHECKPOINT_URL: '/scratch/ffd2011/procedural_step_recog/models/yolo_downloaded_06142024/bbn_yolo_A8.pt'  
-  OMNIGRU_CHECKPOINT_URL: "/scratch/ffd2011/data/BBN/new/A8/output/december_demo/transformer_original_scheduler/aug_img_perc0.8/step_gru_best_model.pt"          
+  YOLO_CHECKPOINT_URL: '/home/user/models/bbn_yolo_A8.pt'  
+  OMNIGRU_CHECKPOINT_URL: "/home/user/models/step_gru_best_model.pt"          
 
 DATASET:
-  TS_ANNOTATIONS_FILE: "/scratch/ffd2011/data/BBN/new/A8/labels/A8_Alabama+BBN_videos.csv" #test ONLY with these videos 
+  TS_ANNOTATIONS_FILE: "/home/user/labels/A8_Alabama+BBN_videos.csv" #test ONLY with these videos 
 
 TRAIN:
   ENABLE: False         #default: True

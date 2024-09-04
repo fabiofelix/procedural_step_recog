@@ -2,15 +2,15 @@ _BASE_: STEPGRU_BASE.yaml
 MODEL:
   OMNIGRU_CHECKPOINT_URL: 
   OUTPUT_DIM: 5
-  YOLO_CHECKPOINT_URL: '/scratch/ffd2011/procedural_step_recog/models/yolo_downloaded_06142024/bbn_yolo_A8.pt'  
+  YOLO_CHECKPOINT_URL: '/home/user/models/bbn_yolo_A8.pt'  
 
 DATASET:
-  TR_ANNOTATIONS_FILE: "/scratch/ffd2011/data/BBN/new/A8/labels/split/train.csv" #train ONLY with these videos
-  VL_ANNOTATIONS_FILE: "/scratch/ffd2011/data/BBN/new/A8/labels/split/val.csv"   #validate ONLY with these videos
-  TS_ANNOTATIONS_FILE: "/scratch/ffd2011/data/BBN/new/A8/labels/split/test.csv"  #test ONLY with these videos 
+  TR_ANNOTATIONS_FILE: "/home/user/labels/split/train.csv" #train ONLY with these videos
+  VL_ANNOTATIONS_FILE: "/home/user/labels/split/val.csv"   #validate ONLY with these videos
+  TS_ANNOTATIONS_FILE: "/home/user/labels/split/test.csv"  #test ONLY with these videos 
 
 OUTPUT:
-  LOCATION: "/scratch/ffd2011/data/BBN/new/A8/output/december_demo/test"
+  LOCATION: "/home/user/output"
 
 TRAIN:
   ENABLE: True               #default: True
