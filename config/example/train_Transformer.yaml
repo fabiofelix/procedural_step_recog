@@ -2,19 +2,19 @@ _BASE_: STEPGRU_BASE.yaml
 MODEL:
   OMNIGRU_CHECKPOINT_URL: 
   OUTPUT_DIM: 5
-  YOLO_CHECKPOINT_URL: '/scratch/ffd2011/procedural_step_recog/models/yolo_downloaded_06142024/bbn_yolo_A8.pt'  
+  YOLO_CHECKPOINT_URL: '/home/user/models/bbn_yolo_A8.pt'  
 
   CLASS: 'OmniTransformer_v3'  #default class OmniGRU
 
 DATASET:
-  TR_ANNOTATIONS_FILE: "/scratch/ffd2011/data/BBN/new/A8/labels/A8_Alabama+BBN_videos.csv"  #run cross-validation over the same videos
-  VL_ANNOTATIONS_FILE: "/scratch/ffd2011/data/BBN/new/A8/labels/A8_Alabama+BBN_videos.csv"  #run cross-validation over the same videos
-  TS_ANNOTATIONS_FILE: "/scratch/ffd2011/data/BBN/new/A8/labels/A8_Alabama+BBN_videos.csv"  #extract 10% of the videos for testing (SPLIT_10P_TEST: True)
+  TR_ANNOTATIONS_FILE: "/home/user/labels/A8_Alabama+BBN_videos.csv"  #run cross-validation over the same videos
+  VL_ANNOTATIONS_FILE: "/home/user/labels/A8_Alabama+BBN_videos.csv"  #run cross-validation over the same videos
+  TS_ANNOTATIONS_FILE: "/home/user/labels/A8_Alabama+BBN_videos.csv"  #extract 10% of the videos for testing (SPLIT_10P_TEST: True)
 
   CLASS: 'Milly_multifeature_v6' #default Milly_multifeature_v4
 
 OUTPUT:
-  LOCATION: "/scratch/ffd2011/data/BBN/new/A8/output/december_demo/test"
+  LOCATION: "/home/user/output"
 
 TRAIN:
   ENABLE: True               #default: True
