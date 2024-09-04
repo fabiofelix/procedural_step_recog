@@ -12,6 +12,16 @@ from PIL import Image
 
 SOUND_FEATURES = 2304  ## default feature vector size of the Auditory SlowFast (2304)
 
+def collate_fn_str(data):
+  frames, labels, stop_frame_idx, ids = zip(*data)
+
+  frames = torch.stack(list(frames), dim = 0).squeeze(1)
+  labels = torch.stack(list(labels), dim = 0)
+  stop_frame_idx = torch.stack(list(stop_frame_idx), dim = 0)
+  ids = np.array(ids)
+
+  return frames, labels, stop_frame_idx, ids
+
 ##Callback function used by the dataloader to garantee that all samples in one single batch have the same shape
 ##In that sense, this function garantee that all the videos in a batch have the same number of windows by appling zero-padding.
 def collate_fn(data):
@@ -109,9 +119,11 @@ def collate_fn(data):
 
 ##TODO: It's returning the whole video
 class Milly_multifeature(torch.utils.data.Dataset):
-    def __init__(self, cfg, split='train', filter=None):
+    def __init__(self, cfg, split='train', filter=None, video_as_datapoint=True):
       self.cfg = cfg        
       self.data_filter = filter
+      self.video_as_datapoint = video_as_datapoint
+      self.use_collate = True
 
       if split == 'train':
         self.annotations_file = cfg.DATASET.TR_ANNOTATIONS_FILE
@@ -174,13 +186,12 @@ def slowfast_hook(module, input, output):
   SOUND_FEATURES_LIST.extend(output.cpu().detach().numpy()) 
 
 class Milly_multifeature_v4(Milly_multifeature):
-  def __init__(self, cfg, split='train', filter=None):
+  def __init__(self, cfg, split='train', filter=None, video_as_datapoint=True):
     self.omni_cfg = act_load_config(args_hook(cfg.MODEL.OMNIVORE_CONFIG))
     self.slowfast_cfg = slowfast_load_config(args_hook(cfg.MODEL.SLOWFAST_CONFIG))
 
-    super().__init__(cfg, split, filter)  
+    super().__init__(cfg, split=split, filter=filter, video_as_datapoint=video_as_datapoint)
 
-    self.augment_configs = {}
     self.device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     self.transform = transforms.Compose([
       transforms.Resize(self.omni_cfg.MODEL.IN_SIZE),
@@ -201,8 +212,9 @@ class Milly_multifeature_v4(Milly_multifeature):
       self.omnivore = Omnivore(self.omni_cfg, resize = False)
       self.omnivore.eval()
 
-    self.sound_cache = deque(maxlen=5)
-    self.frame_cache = {}
+    self.frame_cache_maxlen = None
+    self.video_cache_id = False
+    self.transform_in_loader = True
 
     if self.cfg.MODEL.USE_AUDIO:
       self.slowfast = SlowFast(self.slowfast_cfg)
@@ -212,6 +224,7 @@ class Milly_multifeature_v4(Milly_multifeature):
       layer = self.slowfast._modules.get("head")._modules.get("dropout")
       handle = layer.register_forward_hook(slowfast_hook)
 
+    self.reset()
     self.to(self.device)  
 
   def to(self, device):
@@ -223,6 +236,11 @@ class Milly_multifeature_v4(Milly_multifeature):
     if self.cfg.MODEL.USE_AUDIO:
       self.slowfast.to(device)
 
+  def reset(self):
+    self.frame_cache = {}
+    self.augment_configs = {}
+    self.augment_counts = {"augment":0, "no_aug": 0, "total": 0}
+    self.sound_cache = deque(maxlen=5)
   ##if a step S2 has its TAIL inside step S1, removes from S2 the frames overlaped with S1    
   ##So there are S1  S2_p1 and no overlap between S1 and S2
   ##
@@ -468,19 +486,27 @@ class Milly_multifeature_v4(Milly_multifeature):
 
           win_idx += 1
           self.class_histogram[step_ann.verb_class] += 1
-          video_windows.append({
-            'video_id': v,
-            'window_id': win_idx,
-            'start_frame': max(start_frame, 1),
-            'stop_frame': stop_frame,
-            'start_sound_point': max(start_sound_point, 0),
-            'stop_sound_point': stop_sound_point,
-            'label': step_ann.verb_class,
-            'label_pos': window_pos,
-            'step_limit': [step_ann.start_frame, step_ann.stop_frame],
-            'window_frame_size': int(step_ann.video_fps * win_size_sec[win_size]),
-            'window_point_size': int(self.slowfast_cfg.AUDIO_DATA.SAMPLING_RATE * (win_size_sec[win_size] - 0.001)),
-          })
+          window = {
+              'video_id': v,
+              'window_id': win_idx,
+              'start_frame': max(start_frame, 1),
+              'stop_frame': stop_frame,
+              'start_sound_point': max(start_sound_point, 0),
+              'stop_sound_point': stop_sound_point,
+              'label': step_ann.verb_class,
+              'label_desc': step_ann.narration,
+              'label_pos': window_pos,
+              'step_limit': [step_ann.start_frame, step_ann.stop_frame],
+              'window_frame_size': int(step_ann.video_fps * win_size_sec[win_size]),
+              'window_point_size': int(self.slowfast_cfg.AUDIO_DATA.SAMPLING_RATE * (win_size_sec[win_size] - 0.001))
+            }
+
+          if self.video_as_datapoint:
+            video_windows.append(window)
+          else:  
+            self.datapoints[ipoint] = window
+            ipoint += 1
+            progress.set_postfix({"window total": len(self.datapoints), "padded videos": pad})            
 
           previous_stop_frame = stop_frame
 
@@ -503,13 +529,14 @@ class Milly_multifeature_v4(Milly_multifeature):
           ##If split != 'train', it guarantees that the next step stops in the right place
           previous_stop_frame = stop_frame
 
-      self.datapoints[ipoint] = {
-        'video_id': v,
-        'windows': video_windows
-      }
-      ipoint += 1
-      total_window += len(video_windows)
-      progress.set_postfix({"window total": total_window, "padded videos": pad})
+      if self.video_as_datapoint:
+        self.datapoints[ipoint] = {
+          'video_id': v,
+          'windows': video_windows
+        }
+        ipoint += 1
+        total_window += len(video_windows)
+        progress.set_postfix({"window total": total_window, "padded videos": pad})
 
 
   def augment_frames_aux(self, frames, frame_ids, aug):
@@ -540,6 +567,8 @@ class Milly_multifeature_v4(Milly_multifeature):
           self.augment_configs[video_id] = aug
 
           return self.augment_frames_aux(frames, frame_ids, aug)
+        
+        self.augment_counts["no_aug"] += 1
 
     return frames
 
@@ -576,20 +605,28 @@ class Milly_multifeature_v4(Milly_multifeature):
         """
 
         frame_id = os.path.basename(frame_path).split(".")[0]
+        cache_id = os.path.join(window["video_id"], frame_id) if self.video_cache_id else frame_id 
 
-        if frame_id in self.frame_cache:
-          frame = self.frame_cache[frame_id]["frame"]
+        if cache_id in self.frame_cache:
+          frame = self.frame_cache[cache_id]["frame"]
         else:  
 ##Note: OpenCV is taking at leas 2x more time than PIL to load images
 ##          frame = cv2.imread(frame_path)
 ##          frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
           frame = Image.open(frame_path)
-          frame = self.transform(frame)
+
+          if self.transform_in_loader:
+            frame = self.transform(frame)
+
           frame = np.array(frame)
-          self.frame_cache[frame_id] = {"frame": frame, "new": True}
+          self.frame_cache[cache_id] = {"frame": frame, "new": True}
+
+          if self.frame_cache_maxlen is not None and len(self.frame_cache) > self.frame_cache_maxlen:
+            first_key = list(self.frame_cache)[0]
+            del self.frame_cache[first_key]
 
         window_frames.append(frame)
-        window_frame_ids.append(frame_id)
+        window_frame_ids.append(cache_id)
 
     if len(window_frames) == 0:
       raise Exception("No frame found inside [{}/{}] in the range [{}, {}]".format(self.cfg.DATASET.LOCATION, window["video_id"], window["start_frame"], window["stop_frame"]))    
@@ -806,3 +843,33 @@ class Milly_multifeature_v5(Milly_multifeature):
 
     return video_act, video_obj, video_frame, video_sound, window_step_label, window_position_label, window_stop_frame, video_id
 
+class Milly_multifeature_v6(Milly_multifeature_v4):
+  def __init__(self, cfg, split='train', filter=None):
+    cfg.MODEL.USE_OBJECTS = False
+    cfg.MODEL.USE_ACTION = False
+    cfg.MODEL.USE_AUDIO = False
+
+    super().__init__(cfg, split=split, filter=filter, video_as_datapoint=False)
+
+    self.use_collate = False
+    self.video_cache_id = True
+    self.frame_cache_maxlen = 500
+    self.transform_in_loader = False
+
+##Returns windows as datapoints and frames as timesteps
+  @torch.no_grad()
+  def __getitem__(self, index):
+#    ipdb.set_trace()
+    window = self.datapoints[index]
+
+    window_frames, window_frame_ids = self._load_frames(window)
+    window_frames = self.augment_frames(window_frames, window_frame_ids, window["video_id"])
+    window_frames = torch.from_numpy(np.array(window_frames))
+
+    window_frames = self.transform(window_frames, input_channels_last=True)
+
+    window_step_label = torch.from_numpy(np.array(window["label"]))
+    window_stop_frame = torch.from_numpy(np.array(window["stop_frame"]))
+    video_id = np.array(window["video_id"])
+
+    return window_frames, window_step_label, window_stop_frame, video_id

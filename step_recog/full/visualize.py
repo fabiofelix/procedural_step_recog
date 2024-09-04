@@ -4,8 +4,9 @@ import torch
 import supervision as sv
 import numpy as np
 
-from model import StepPredictor
+from model import StepPredictor_GRU, StepPredictor_Transformer, args_hook
 from statemachine import ProcedureStateMachine
+from step_recog.config import load_config
 
 STATES = [
           (128, 128, 128), ##unobserved = grey
@@ -24,7 +25,9 @@ def main(video_path, output_path='output.mp4', cfg_file=""):
     video_info = sv.VideoInfo.from_video_path(video_path)
 
     # define model
-    model = StepPredictor(cfg_file, video_info.fps).to("cuda")
+    MODEL_CLASS = load_config(args_hook(cfg_file))
+    MODEL_CLASS = StepPredictor_GRU if "gru" in MODEL_CLASS.MODEL.CLASS.lower() else StepPredictor_Transformer
+    model = MODEL_CLASS(cfg_file, video_info.fps).to("cuda") 
 
     step_process = video_info.fps #1 second by default
     prob_step = np.zeros(model.cfg.MODEL.OUTPUT_DIM + 1)
@@ -40,7 +43,7 @@ def main(video_path, output_path='output.mp4', cfg_file=""):
 
             if idx % step_process == 0:
               # take in a queue frame and make the next prediction
-              prob_step = model(frame_aux, queue_omni_frame = False).cpu().squeeze().numpy()
+              prob_step = model(frame_aux, queue_frame = False).cpu().squeeze().numpy()
               step_idx  = np.argmax(prob_step)
               step_desc = "No step" if step_idx >= len(model.STEPS) else model.STEPS[step_idx]              
               

@@ -1,4 +1,4 @@
-from step_recog.models import OmniGRU
+from step_recog import models, models_v2
 import torch
 from torch import nn
 import numpy as np
@@ -15,7 +15,10 @@ import glob
 
 def build_model(cfg):
   device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-  model  = OmniGRU(cfg)
+
+  MODEL_CLASS = getattr(models, cfg.MODEL.CLASS) if "gru" in cfg.MODEL.CLASS.lower() else getattr(models_v2, cfg.MODEL.CLASS)
+
+  model = MODEL_CLASS(cfg)
   model.to(device)
 
   return model, device  
@@ -44,6 +47,8 @@ def build_optimizer(model, cfg):
 
   if cfg.TRAIN.OPT == "adam":
     optimizer = torch.optim.Adam(model.parameters(), lr=cfg.TRAIN.LR, weight_decay = cfg.TRAIN.WEIGHT_DECAY)
+  elif cfg.TRAIN.OPT == "adamw":
+    optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.TRAIN.LR, weight_decay = cfg.TRAIN.WEIGHT_DECAY)    
   elif cfg.TRAIN.OPT == "sgd":
     optimizer = torch.optim.SGD(model.parameters(), lr=cfg.TRAIN.LR, momentum = cfg.TRAIN.MOMENTUM, weight_decay = cfg.TRAIN.WEIGHT_DECAY)
   elif cfg.TRAIN.OPT == "rmsprop":
@@ -53,10 +58,12 @@ def build_optimizer(model, cfg):
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size = 5)
   elif cfg.TRAIN.SCHEDULER == "exp":  
     scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.99)
+  elif cfg.TRAIN.SCHEDULER == "cos":  
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=5)
 
   return optimizer, scheduler
 
-def train_step(model, criterion, criterion_t, optimizer, loader, is_training, device, cfg, progress, class_weight):
+def train_step_GRU(model, criterion, criterion_t, optimizer, loader, is_training, device, cfg, progress, class_weight):
   if is_training:
     model.train()
     h = model.init_hidden(cfg.TRAIN.BATCH_SIZE)
@@ -68,6 +75,7 @@ def train_step(model, criterion, criterion_t, optimizer, loader, is_training, de
   sum_loss = 0.
   sum_b_acc = 0.
   sum_acc = 0.
+  counter = 1.0
   label_expected = []
   label_predicted = []
 
@@ -157,12 +165,78 @@ def train_step(model, criterion, criterion_t, optimizer, loader, is_training, de
   else:
     return sum_loss/counter, sum_class_loss/counter, sum_pos_loss/counter, sum_b_acc/counter, sum_acc/counter, grad_norm, np.array(label_expected), np.array(label_predicted) 
 
-def load_current_state(cfg, model):
+def train_step_Transformer(model, criterion, optimizer, loader, is_training, cfg, progress, class_weight):
+  if is_training:
+    model.train()
+  else:
+    model.eval()  
+
+  sum_loss = 0.
+  sum_b_acc = 0.
+  sum_acc = 0.
+  counter = 1.0
+  label_expected = []
+  label_predicted = []
+
+  steps_feat = model.prepare_txt(cfg.SKILLS[0]["STEPS"])
+  loader.dataset.transform = models_v2.prepare_img
+  loader.dataset.reset()
+
+  for counter, (window_frame, window_label, _, _) in enumerate(loader, 1):
+    window_label_oh = nn.functional.one_hot(window_label, model.number_classes).float()
+
+    optimizer.zero_grad()
+    out  = model(window_frame.cuda(), steps_feat.cuda())
+    loss = criterion(out, window_label_oh.to(out.device))
+
+    if is_training:
+      loss.backward()
+      optimizer.step()
+
+    sum_loss += loss.item()      
+
+    window_label = window_label.numpy()
+    window_frame = window_frame.cpu()
+    out = out.cpu().detach()
+    torch.cuda.empty_cache()
+
+    out = torch.argmax(torch.softmax(out, dim = -1), axis = -1).numpy()
+
+    label_expected.extend(window_label)
+    label_predicted.extend(out)
+
+    sum_acc   += accuracy_score(window_label, out)      
+    sum_b_acc += weighted_accuracy(window_label, out, class_weight)         
+
+    if is_training:
+      progress.update(1)
+      accuracy_desc = "{}acc".format("weighted " if cfg.TRAIN.USE_CLASS_WEIGHT else ""  )
+      acc_avg = (sum_b_acc if cfg.TRAIN.USE_CLASS_WEIGHT else sum_acc  )/counter
+      progress.set_postfix({"Cross entropy": sum_loss/counter, 
+                            accuracy_desc: acc_avg})
+
+  grad_norm = np.sqrt(np.sum([torch.norm(p.grad).cpu().item()**2 for p in model.parameters() if p.grad is not None ]))
+
+  if is_training:
+    return sum_loss/counter, sum_loss/counter, 0, sum_b_acc/counter, sum_acc/counter, grad_norm  
+  else:
+    return sum_loss/counter, sum_loss/counter, 0, sum_b_acc/counter, sum_acc/counter, grad_norm, np.array(label_expected), np.array(label_predicted)     
+
+
+def train_step(model, criterion, criterion_t, optimizer, loader, is_training, device, cfg, progress, class_weight):
+  if isinstance(model, models_v2.PTGPerceptionBases):
+    return train_step_Transformer(model, criterion, optimizer, loader, is_training, cfg, progress, class_weight)
+  else: 
+    return train_step_GRU(model, criterion, criterion_t, optimizer, loader, is_training, device, cfg, progress, class_weight)
+
+def load_current_state(cfg, model, optimizer, scheduler=None): 
   current_epoch = 0
   history = {"train_loss":[], "train_class_loss":[], "train_pos_loss": [], "train_acc":[], "train_b_acc":[], "train_grad_norm": [], 
              "val_loss":[], "val_class_loss":[], "val_pos_loss": [], "val_acc":[], "val_b_acc":[], "val_grad_norm": [], 
-             "best_epoch": None}  
+             "best_epoch": None, "learning_rate": []}  
   current_model = glob.glob(os.path.join(cfg.OUTPUT.LOCATION, 'current_model_epoch*.pt'))
+  current_opt   = glob.glob(os.path.join(cfg.OUTPUT.LOCATION, 'current_optimizer_epoch*.pt'))
+  current_sch   = glob.glob(os.path.join(cfg.OUTPUT.LOCATION, 'current_scheduler_epoch*.pt'))
 
   if len(current_model) > 0:
     current_model.sort()
@@ -178,25 +252,46 @@ def load_current_state(cfg, model):
     if os.path.isfile(hist_file):
       hist_file = open(hist_file, "r")
       history   = json.load(hist_file)
+    if len(current_opt) > 0:
+      current_opt.sort()
+      config = torch.load(current_opt[-1])
+      optimizer.load_state_dict(config)
+    if scheduler is not None and len(current_sch) > 0:
+      current_sch.sort()
+      config = torch.load(current_sch[-1])
+      scheduler.load_state_dict(config)          
 
-  return model, current_epoch + 1, history
+  if not "learning_rate" in history:
+    history["learning_rate"] = []
 
-def save_current_state(cfg, model, history, epoch): 
-  model_pattern = os.path.join(cfg.OUTPUT.LOCATION, 'current_model_epoch{:02d}.pt')  
-  torch.save(model.state_dict(), model_pattern.format(epoch))
+  return model, optimizer, scheduler, current_epoch + 1, history
+
+def save_current_state(cfg, model, history, epoch, optimizer, scheduler=None): 
+  name_pattern = os.path.join(cfg.OUTPUT.LOCATION, 'current_{}_epoch{:02d}.pt')  
+  torch.save(model.state_dict(), name_pattern.format("model", epoch))
+  torch.save(optimizer.state_dict(), name_pattern.format("optimizer", epoch))
+
+  if scheduler is not None:
+    torch.save(scheduler.state_dict(), name_pattern.format("scheduler", epoch))
 
   hist_file = open(os.path.join(cfg.OUTPUT.LOCATION, "history.json"), "w")
   hist_file.write(json.dumps(history))
 
-  previous_model = model_pattern.format(epoch - 1)
+  previous_model = name_pattern.format("model", epoch - 1)
+  previous_opt   = name_pattern.format("optimizer", epoch - 1)
+  previous_sch   = name_pattern.format("scheduler", epoch - 1)
 
   if epoch > 1 and os.path.isfile(previous_model):
     os.remove(previous_model)
+  if epoch > 1 and os.path.isfile(previous_opt):
+    os.remove(previous_opt)    
+  if epoch > 1 and os.path.isfile(previous_sch):
+    os.remove(previous_sch)        
     
 def logging(model, optimizer, scheduler, cfg):
   data_features = ""
   aug_data = "raw data"
-  schedule_msg = " "
+  schedule_msg = ""
 
   if cfg.MODEL.USE_ACTION:
     data_features = "action"
@@ -204,6 +299,8 @@ def logging(model, optimizer, scheduler, cfg):
     data_features +=  "image" if data_features == "" else "+image"
   if cfg.MODEL.USE_AUDIO:
     data_features +=  "sound" if data_features == "" else "+sound"
+  if data_features == "":
+    data_features = "RGB frames"
   if cfg.DATASET.INCLUDE_IMAGE_AUGMENTATIONS or cfg.DATASET.INCLUDE_TIME_AUGMENTATIONS:
     aug_data = "aug"
     if cfg.DATASET.INCLUDE_IMAGE_AUGMENTATIONS:
@@ -238,15 +335,13 @@ def train(train_loader, val_loader, cfg):
     optimizer, scheduler = build_optimizer(model, cfg)
     logging(model, optimizer, scheduler, cfg)
 
-    model, first_epoch, history = load_current_state(cfg, model)
-    progress = tqdm.tqdm(total = len(train_loader), unit= "step", bar_format='{desc}|{bar:10}| {n_fmt}/{total_fmt} [{elapsed}<{remaining} - {rate_fmt}]{postfix}' )
+    model, optimizer, scheduler, first_epoch, history = load_current_state(cfg, model, optimizer, scheduler)
 
     best_val_loss = float('inf') if len(history["val_loss"]) == 0 else np.min(history["val_loss"])
     best_val_acc  = float('inf') if len(history["val_acc"]) == 0 else history["val_acc"][np.argmin(history["val_loss"])]
 
     for epoch in range(first_epoch, cfg.TRAIN.EPOCHS + 1):
-      progress.set_description("Epoch {}/{} ".format(epoch, cfg.TRAIN.EPOCHS))
-      progress.reset()
+      progress = tqdm.tqdm(total = len(train_loader), desc = "Epoch {}/{} ".format(epoch, cfg.TRAIN.EPOCHS), unit= "step", bar_format='{desc}|{bar:10}| {n_fmt}/{total_fmt} [{elapsed}<{remaining} - {rate_fmt}]{postfix}' )
       
       train_loss, train_class_loss, train_pos_loss, train_b_acc, train_acc, grad_norm = train_step(model=model, criterion=criterion, criterion_t=criterion_t, optimizer=optimizer, loader=train_loader, is_training=True, device=device, cfg=cfg, progress=progress, class_weight=train_class_weight)
       history["train_loss"].append(train_loss)
@@ -269,11 +364,11 @@ def train(train_loader, val_loader, cfg):
       accuracy_desc = "{}acc".format("weighted " if cfg.TRAIN.USE_CLASS_WEIGHT else ""  )
       progress.set_postfix({"Cross entropy": train_class_loss, "MSE": train_pos_loss, "Total loss": train_loss, accuracy_desc: (train_b_acc if cfg.TRAIN.USE_CLASS_WEIGHT else train_acc), 
                             "val Cross entropy": val_class_loss, "val MSE": val_pos_loss, "val Total loss": val_loss, "val {}".format(accuracy_desc): (val_b_acc if cfg.TRAIN.USE_CLASS_WEIGHT else val_acc)})
-      print("")
+      progress.close()
 
       if scheduler is not None:
         scheduler.step()
-        print("|- Learning rate: ", scheduler.get_last_lr())
+        history["learning_rate"].append(scheduler.get_last_lr())
       if val_loss < best_val_loss:
         history["best_epoch"] = epoch
         best_val_loss = val_loss
@@ -289,7 +384,7 @@ def train(train_loader, val_loader, cfg):
         save_evaluation(val_targets, val_outputs, classes, cfg, label_order = classes_desc, class_weight = val_class_weight)
         cfg.OUTPUT.LOCATION = original_output        
 
-      save_current_state(cfg, model, history, epoch) 
+      save_current_state(cfg, model, history, epoch, optimizer, scheduler) 
 
     plot_history(history, cfg)        
 
@@ -300,12 +395,20 @@ def train(train_loader, val_loader, cfg):
 
 @torch.no_grad()
 def evaluate(model, data_loader, cfg):
+  if isinstance(model, models_v2.PTGPerceptionBases):
+    evaluate_Transformer(model, data_loader, cfg)
+  else: 
+    evaluate_GRU(model, data_loader, cfg)
+
+def evaluate_GRU(model, data_loader, cfg):
   device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
   model.eval()  
   
   outputs = []
   targets = []
   _, _, class_weight =  build_losses(data_loader, cfg, device)
+
+#  ipdb.set_trace()
 
   for action, obj, frame, audio, label, _, mask, frame_idx, videos in data_loader:
     h = model.init_hidden(len(action))
@@ -339,6 +442,50 @@ def evaluate(model, data_loader, cfg):
   classes_desc = [ "Step " + str(i + 1)  for i in range(model.number_classes)]
   classes_desc[-1] = "No step"
   save_evaluation(targets, np.argmax(outputs, axis = 1), classes, cfg, label_order = classes_desc, class_weight = class_weight)
+
+def evaluate_Transformer(model, data_loader, cfg):
+  device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+  model.eval()  
+  
+  outputs = []
+  targets = []
+  _, _, class_weight =  build_losses(data_loader, cfg, device)
+
+  steps_feat = model.prepare_txt(cfg.SKILLS[0]["STEPS"]).cpu().detach()
+  data_loader.dataset.transform = models_v2.prepare_img  
+  data_loader.dataset.reset()
+
+  video_evaluation = {}
+
+  for window_frame, window_label, frame_idx, videos in data_loader:
+    out = model(window_frame.cuda(), steps_feat.cuda())
+    out = torch.softmax(out, dim = -1).cpu().numpy()
+    window_label = window_label.cpu().numpy()
+
+    torch.cuda.empty_cache()
+
+    targets.extend(window_label)
+    outputs.extend(out)
+
+    for video_id, video_frames, frame_target, frame_pred in zip(videos, frame_idx.numpy(), window_label, out):
+      if not video_id in video_evaluation:
+        video_evaluation[video_id] = {"frames": [], "target": [], "output": []}
+
+      video_evaluation[video_id]["frames"].append(video_frames)
+      video_evaluation[video_id]["target"].append(frame_target)
+      video_evaluation[video_id]["output"].append(frame_pred)
+
+  for video in video_evaluation:
+    save_video_evaluation(video, video_evaluation[video]["frames"], video_evaluation[video]["target"], video_evaluation[video]["output"], cfg)
+
+  targets = np.array(targets)
+  outputs = np.array(outputs)
+
+  classes = [ i for i in range(model.number_classes)]
+  classes_desc = [ "Step " + str(i + 1)  for i in range(model.number_classes)]
+  classes_desc[-1] = "No step"
+  save_evaluation(targets, np.argmax(outputs, axis = 1), classes, cfg, label_order = classes_desc, class_weight = class_weight)
+
 
 action_projection = None
 obj_projection = None
