@@ -57,39 +57,39 @@ def main():
   if cfg.DATALOADER.NUM_WORKERS > 0:
     torch.multiprocessing.set_start_method('spawn')
 
-  timeout = 0
-
   if cfg.TRAIN.ENABLE:
     if cfg.TRAIN.USE_CROSS_VALIDATION:
       train_kfold(cfg, args)
     else:
       train_hold_out(cfg)
   else:
-    DATASET_CLASS = getattr(datasets, cfg.DATASET.CLASS)
     model, _ = build_model(cfg)      
     weights  = torch.load(cfg.MODEL.OMNIGRU_CHECKPOINT_URL)
     model.load_state_dict(model.update_version(weights))  
 
     data   = pd.read_csv(cfg.DATASET.TS_ANNOTATIONS_FILE)
-    videos = data.video_id.unique()
-    _, video_test = my_train_test_split(cfg, videos)    
-    ts_dataset = DATASET_CLASS(cfg, split='test', filter = video_test)
-
-    ts_data_loader = DataLoader(
-            ts_dataset, 
-            shuffle=False, 
-            batch_size=cfg.TRAIN.BATCH_SIZE,
-            num_workers=min(math.ceil(len(ts_dataset) / cfg.TRAIN.BATCH_SIZE), cfg.DATALOADER.NUM_WORKERS),
-            collate_fn=datasets.collate_fn,
-            drop_last=False,
-            timeout=timeout)
+    _, video_test = my_train_test_split(cfg, data.video_id.unique())   
+    ts_data_loader = build_loader(cfg, 'test', video_test)
 
     evaluate(model, ts_data_loader, cfg)
+
+def build_loader(cfg, split, filter = None, timeout = 0):
+  DATASET_CLASS = getattr(datasets, cfg.DATASET.CLASS)
+  dataset = DATASET_CLASS(cfg, split=split, filter = filter)
+
+  return DataLoader(
+    dataset, 
+    shuffle=False, 
+    batch_size=cfg.TRAIN.BATCH_SIZE,
+    num_workers=min(math.ceil(len(dataset) / cfg.TRAIN.BATCH_SIZE), cfg.DATALOADER.NUM_WORKERS),
+    collate_fn=datasets.collate_fn if dataset.use_collate else datasets.collate_fn_str,
+    drop_last=split == 'train',
+    timeout=timeout)      
 
 def my_train_test_split(cfg, videos):
   video_test = None
 
-  if cfg.TRAIN.CV_TEST_TYPE == "10p":
+  if cfg.TRAIN.SPLIT_10P_TEST:
     print("|- Spliting the dataset 90:10 for training/validation and testing")
 
     if "M1" in cfg.SKILLS[0]["NAME"]:    
@@ -103,7 +103,7 @@ def my_train_test_split(cfg, videos):
     elif "R18" in cfg.SKILLS[0]["NAME"]:      
       videos, video_test = train_test_split(videos, test_size=0.10, random_state=2343) #R18 1740: only with BBN seal_videos.zip
     elif "A8" in cfg.SKILLS[0]["NAME"]:
-      videos, video_test = train_test_split(videos, test_size=0.10, random_state=2329) #A8:
+      videos, video_test = train_test_split(videos, test_size=0.10, random_state=2317) #A8: 2329: only with data until 07/31/2024
     else: #M4, R16, R19      
       videos, video_test = train_test_split(videos, test_size=0.10, random_state=1030)
 
@@ -127,30 +127,9 @@ def train_kfold(cfg, args, k = 10):
       train_hold_out(cfg, os.path.join(main_path, "fold_{:02d}".format(idx) ), video_train, video_val, video_test)
 
 def train_hold_out(cfg, main_path = None, video_train = None, video_val = None, video_test = None):
-  DATASET_CLASS = getattr(datasets, cfg.DATASET.CLASS)
-  timeout = 0
+  tr_data_loader = build_loader(cfg, 'train', filter=video_train)
+  vl_data_loader = build_loader(cfg, 'validation', filter=video_val)
 
-  tr_dataset = DATASET_CLASS(cfg, split='train', filter=video_train)
-  vl_dataset = DATASET_CLASS(cfg, split='validation', filter=video_val)  
-
-  tr_data_loader = DataLoader(
-          tr_dataset, 
-          shuffle=False, 
-          batch_size=cfg.TRAIN.BATCH_SIZE,
-          num_workers=min(math.ceil(len(tr_dataset) / cfg.TRAIN.BATCH_SIZE), cfg.DATALOADER.NUM_WORKERS),
-          collate_fn=datasets.collate_fn,
-          drop_last=True,
-          timeout=timeout)
-  vl_data_loader = DataLoader(
-          vl_dataset, 
-          shuffle=False, 
-          batch_size=cfg.TRAIN.BATCH_SIZE,
-          num_workers=min(math.ceil(len(vl_dataset) / cfg.TRAIN.BATCH_SIZE), cfg.DATALOADER.NUM_WORKERS),
-          collate_fn=datasets.collate_fn,
-          drop_last=False,
-          timeout=timeout)  
-
-#      pdb.set_trace()
   if main_path is None:
     main_path = cfg.OUTPUT.LOCATION
   else:  
@@ -168,7 +147,6 @@ def train_hold_out(cfg, main_path = None, video_train = None, video_val = None, 
 #      model_name = os.path.join(cfg.OUTPUT.LOCATION, 'step_gru_best_model.pt')        
 
   del tr_data_loader
-  del tr_dataset
 
   model, _ = build_model(cfg)      
   weights  = torch.load(model_name)
@@ -178,23 +156,12 @@ def train_hold_out(cfg, main_path = None, video_train = None, video_val = None, 
 ##  evaluate(model, vl_data_loader, cfg)      
 
   del vl_data_loader
-  del vl_dataset      
 
-  ts_dataset = DATASET_CLASS(cfg, split='test', filter = video_test)
-  ts_data_loader = DataLoader(
-          ts_dataset, 
-          shuffle=False, 
-          batch_size=cfg.TRAIN.BATCH_SIZE,
-          num_workers=min(math.ceil(len(ts_dataset) / cfg.TRAIN.BATCH_SIZE), cfg.DATALOADER.NUM_WORKERS),
-          collate_fn=datasets.collate_fn,
-          drop_last=False,
-          timeout=timeout)
-      
+  ts_data_loader = build_loader(cfg, 'test', video_test)
   cfg.OUTPUT.LOCATION = test_path
   evaluate(model, ts_data_loader, cfg)
 
   del ts_data_loader
-  del ts_dataset                                                 
 
 
 if __name__ == "__main__":

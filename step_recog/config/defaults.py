@@ -21,7 +21,7 @@ _C.TRAIN.WEIGHT_DECAY = 0.0
 _C.TRAIN.SCHEDULER = None
 _C.TRAIN.RETURN_METRICS = False
 _C.TRAIN.USE_CROSS_VALIDATION = True
-_C.TRAIN.CV_TEST_TYPE = None
+_C.TRAIN.SPLIT_10P_TEST = False
 _C.TRAIN.USE_CLASS_WEIGHT = True
 
 # -----------------------------------------------------------------------------
@@ -34,6 +34,7 @@ _C.EVAL.ENABLE = True
 # Model options
 # -----------------------------------------------------------------------------
 _C.MODEL = CfgNode()
+_C.MODEL.CLASS = 'OmniGRU'
 _C.MODEL.HIDDEN_SIZE = 1024
 _C.MODEL.PROJECTION_SIZE = 512
 ##_C.MODEL.CONTEXT_LENGTH = 'all'

@@ -1,0 +1,26 @@
+_BASE_: STEPGRU_BASE.yaml
+MODEL:
+  OMNIGRU_CHECKPOINT_URL: 
+  OUTPUT_DIM: 5
+  YOLO_CHECKPOINT_URL: '/scratch/ffd2011/procedural_step_recog/models/yolo_downloaded_06142024/bbn_yolo_A8.pt'  
+
+DATASET:
+  TR_ANNOTATIONS_FILE: "/scratch/ffd2011/data/BBN/new/A8/labels/split/train.csv" #train ONLY with these videos
+  VL_ANNOTATIONS_FILE: "/scratch/ffd2011/data/BBN/new/A8/labels/split/val.csv"   #validate ONLY with these videos
+  TS_ANNOTATIONS_FILE: "/scratch/ffd2011/data/BBN/new/A8/labels/split/test.csv"  #test ONLY with these videos 
+
+OUTPUT:
+  LOCATION: "/scratch/ffd2011/data/BBN/new/A8/output/december_demo/test"
+
+TRAIN:
+  ENABLE: True               #default: True
+  USE_CROSS_VALIDATION: False #default: True
+
+SKILLS:
+  - NAME: A8 - Nasopharyngeal Airway (NPA)
+    STEPS:
+      - Select NPA tube that best fits casualty.
+      - Place casualty into 'sniffing position' with head tilted back and nostrils exposed.
+      - Cover NPA with lube.
+      - Insert NPA perpendicular to casualty nostril until flange meets tip of nose, rotating along the way.
+      - Look, listen, and feel for airway compliance.      

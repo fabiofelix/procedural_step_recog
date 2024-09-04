@@ -25,7 +25,7 @@ TRAIN:
   USE_CLASS_WEIGHT: True ##default true
   NUM_GPUS: 1
   BATCH_SIZE: 8 #32
-  OPT: "adam"  #adam sgd rmsprop
+  OPT: "adam"  #adam adamw sgd rmsprop
   LR: 0.001
   EPOCHS: 25
-  CV_TEST_TYPE: None  # 10p bbn None
+  SPLIT_10P_TEST: False

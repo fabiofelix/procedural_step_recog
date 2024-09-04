@@ -15,7 +15,7 @@ from torch.nn.init import normal_
 from torch.utils import model_zoo
 from copy import deepcopy
 from PIL import Image
-import pdb
+import ipdb
 
 from .build import MODEL_REGISTRY
 from act_recog.datasets.transform import uniform_crop
@@ -60,7 +60,7 @@ class Omnivore(nn.Module):
             return y, shoulder
         return y
 
-    def prepare_image(self, im, bgr2rgb = True):
+    def prepare_image(self, im):
         # 1,C,H,W
         if isinstance(im, Image.Image):
           im = np.array(im)

@@ -28,4 +28,4 @@ TRAIN:
   OPT: "adam"  #adam sgd rmsprop
   LR: 0.001
   EPOCHS: 25
-  CV_TEST_TYPE: None  # 10p bbn None
+  SPLIT_10P_TEST: False
