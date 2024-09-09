@@ -3,6 +3,9 @@ MODEL:
   OMNIGRU_CHECKPOINT_URL: '/home/user/models/A8.pt'
   OUTPUT_DIM: 5
   YOLO_CHECKPOINT_URL: '/home/user/models/bbn_yolo_A8.pt'
+  VARIANTS:
+    A: /home/user/models/A8_v2.1.pt
+    B: /home/user/models/A8_v2.2.pt
 
 DATASET:
   TR_ANNOTATIONS_FILE: "/home/user/labels/A8_Alabama_videos.csv"

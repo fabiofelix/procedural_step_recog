@@ -55,6 +55,8 @@ _C.MODEL.PRETRAINED_CHECKPOINT_URL = ''
 _C.MODEL.OMNIVORE_CONFIG = 'OMNIVORE'
 _C.MODEL.SLOWFAST_CONFIG = 'SLOWFAST'
 
+_C.MODEL.VARIANTS = CfgNode(new_allowed=True)
+
 # -----------------------------------------------------------------------------
 # Dataset options
 # -----------------------------------------------------------------------------

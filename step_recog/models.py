@@ -157,5 +157,6 @@ class OmniGRU(torch.nn.Module):
           key = key.replace("rgb", "action")  
 
         new_dict[key] = value
+      new_dict.pop('_device', None)
           
       return new_dict    
