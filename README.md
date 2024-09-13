@@ -133,6 +133,8 @@ python tools/test.py --cfg config/M3.yaml
 4. Dataloader: `step_recog/datasets/milly.py` (methods *_construct_loader* and *__getitem\__*)
 - class *Milly_multifeature_v4* loads video frames and returns features
 - class *Milly_multifeature_v5* loads and returns (preprocessed) features 
+- class *Milly_multifeature_v6* loads and returns frames
 5. Image augmentation: `tools/augmentation.py` (function *get_augmentation*)
 6. Basic configuration: `step_recog/config/defaults.py` (more important), `act_recog/config/defaults.py`, `auditory_slowfast/config/defaults.py`
-6. Visualizer: `step_recog/full/visualize.py` implements a specific code that combines dataloading, model prediction, and a state machine. It uses the user interface with the trained models.
+- examples of configuration files `config/example`
+7. Visualizer: `step_recog/full/visualize.py` implements a specific code that combines dataloading, model prediction, and a state machine. It uses the user interface with the trained models.

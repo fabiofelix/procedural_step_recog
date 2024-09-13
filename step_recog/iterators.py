@@ -13,12 +13,12 @@ import seaborn as sb, pandas as pd
 import warnings
 import glob
 
-def build_model(cfg):
+def build_model(cfg, load = False):
   device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
   MODEL_CLASS = getattr(models, cfg.MODEL.CLASS) if "gru" in cfg.MODEL.CLASS.lower() else getattr(models_v2, cfg.MODEL.CLASS)
 
-  model = MODEL_CLASS(cfg)
+  model = MODEL_CLASS(cfg, load = load)
   model.to(device)
 
   return model, device  
@@ -60,6 +60,10 @@ def build_optimizer(model, cfg):
     scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.99)
   elif cfg.TRAIN.SCHEDULER == "cos":  
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=5)
+
+  if cfg.TRAIN.LINEAR_WARMUP_EPOCHS is not None:
+    scheduler_warmup = torch.optim.lr_scheduler.LinearLR(optimizer, total_iters = cfg.TRAIN.LINEAR_WARMUP_EPOCHS)
+    scheduler        = torch.optim.lr_scheduler.SequentialLR(optimizer, [scheduler_warmup, scheduler], milestones=[cfg.TRAIN.LINEAR_WARMUP_EPOCHS])
 
   return optimizer, scheduler
 
@@ -178,7 +182,7 @@ def train_step_Transformer(model, criterion, optimizer, loader, is_training, cfg
   label_expected = []
   label_predicted = []
 
-  steps_feat = model.prepare_txt(cfg.SKILLS[0]["STEPS"])
+  steps_feat = models_v2.prepare_txt(cfg.SKILLS[0]["STEPS"])
   loader.dataset.transform = models_v2.prepare_img
   loader.dataset.reset()
 
@@ -368,7 +372,7 @@ def train(train_loader, val_loader, cfg):
 
       if scheduler is not None:
         scheduler.step()
-        history["learning_rate"].append(scheduler.get_last_lr())
+        history["learning_rate"].append(scheduler.get_last_lr()[0])
       if val_loss < best_val_loss:
         history["best_epoch"] = epoch
         best_val_loss = val_loss
@@ -433,7 +437,7 @@ def evaluate_GRU(model, data_loader, cfg):
           targets.append(target)
           outputs.append(pred)
 
-      save_video_evaluation(video_id, aux_frame, aux_targets, aux_outputs, cfg)
+      save_video_evaluation(video_id, aux_frame, aux_targets, aux_outputs, cfg, len(data_loader.dataset.class_histogram))
 
   targets = np.array(targets)
   outputs = np.array(outputs)
@@ -451,7 +455,7 @@ def evaluate_Transformer(model, data_loader, cfg):
   targets = []
   _, _, class_weight =  build_losses(data_loader, cfg, device)
 
-  steps_feat = model.prepare_txt(cfg.SKILLS[0]["STEPS"]).cpu().detach()
+  steps_feat = models_v2.prepare_txt(cfg.SKILLS[0]["STEPS"]).cpu().detach()
   data_loader.dataset.transform = models_v2.prepare_img  
   data_loader.dataset.reset()
 
@@ -476,7 +480,7 @@ def evaluate_Transformer(model, data_loader, cfg):
       video_evaluation[video_id]["output"].append(frame_pred)
 
   for video in video_evaluation:
-    save_video_evaluation(video, video_evaluation[video]["frames"], video_evaluation[video]["target"], video_evaluation[video]["output"], cfg)
+    save_video_evaluation(video, video_evaluation[video]["frames"], video_evaluation[video]["target"], video_evaluation[video]["output"], cfg, len(data_loader.dataset.class_histogram))
 
   targets = np.array(targets)
   outputs = np.array(outputs)
@@ -644,7 +648,7 @@ def extract_features(model, data_loader, cfg):
                             feature_concat=features_concat, gru_feature=np.array(gru_feature)
                             )
       np.savez(os.path.join(cfg.OUTPUT.LOCATION, "{}-window_label.npz".format(video_id)), frame_idx=np.array(frames), label=np.array(targets), label_desc=np.array(target_desc), label_pred=np.array(outputs), label_pred_desc=np.array(output_desc))
-      save_video_evaluation(video_id, frames, targets, outputs, cfg)  
+      save_video_evaluation(video_id, frames, targets, outputs, cfg, len(data_loader.dataset.class_histogram))  
 
 def plot_history(history, cfg):
   hist_file = open(os.path.join(cfg.OUTPUT.LOCATION, "history.json"), "w")
@@ -765,41 +769,40 @@ def save_evaluation(expected, predicted, classes, cfg, label_order = None, norma
     plt.close()
     sb.reset_orig()
 
-def save_video_evaluation(video_id, window_last_frame, expected, probs, cfg):
-  expected = np.array(expected)
+def save_video_evaluation(video_id, window_last_frame, expected, probs, cfg, nr_classes):
   output_location = os.path.join(cfg.OUTPUT.LOCATION, "video_evaluation")
 
   if not os.path.isdir(output_location):
     os.mkdir(output_location)
 
-  last_expected = np.max(expected)
-  expected[expected == last_expected] = -1
-
+  expected = np.array(expected)
   predicted = np.argmax(probs, axis = 1) 
-  last_predicted = np.max(predicted)
-  predicted[predicted == last_predicted] = -1
 
-  classes_desc = [ "No step" if i == 0 else "Step " + str(i)  for i in range(last_expected + 1)]  
   accuracy  = accuracy_score(expected, predicted)
   acc_desc  = "acc"
 
   if cfg.TRAIN.USE_CLASS_WEIGHT:
     acc_desc     = "weighted acc"
-    class_weight = get_class_weight([ np.sum(expected == c) for c in np.unique(expected) ])
+    class_weight = get_class_weight([ np.sum(expected == c) for c in range(nr_classes) ])
     accuracy     = weighted_accuracy(expected, predicted, class_weight=class_weight)
 
   precision = precision_score(expected, predicted, average=None)
   recall    = recall_score(expected, predicted, average=None)
+
+  ##Let No Step before the other steps
+  expected[expected == nr_classes - 1] = -1
+  predicted[predicted == nr_classes - 1] = -1
+  classes_desc = [ "No step" if i == 0 else "Step " + str(i)  for i in range(nr_classes)]  
 
   figure = plt.figure(figsize = (1024 / 100, 768 / 100), dpi = 100)
 
   try:
     plt.subplot(2, 1, 1)
     plt.step(window_last_frame, expected, c="royalblue")
-    plt.yticks( [ i - 1 for i in range(last_expected + 1) ], classes_desc)  
+    plt.yticks( [ i - 1 for i in range(nr_classes) ], classes_desc)  
 
     plt.step(window_last_frame, predicted, c="orange")
-    plt.yticks( [ i - 1 for i in range(last_predicted + 1) ], classes_desc)
+    plt.yticks( [ i - 1 for i in range(nr_classes) ], classes_desc)
     
     plt.plot(1, np.min([expected, predicted]), 'white')
     plt.plot(1, np.min([expected, predicted]), 'white')

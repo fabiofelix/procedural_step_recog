@@ -12,7 +12,7 @@ from PIL import Image
 
 SOUND_FEATURES = 2304  ## default feature vector size of the Auditory SlowFast (2304)
 
-def collate_fn_str(data):
+def collate_fn_v2(data):
   frames, labels, stop_frame_idx, ids = zip(*data)
 
   frames = torch.stack(list(frames), dim = 0).squeeze(1)
@@ -24,7 +24,7 @@ def collate_fn_str(data):
 
 ##Callback function used by the dataloader to garantee that all samples in one single batch have the same shape
 ##In that sense, this function garantee that all the videos in a batch have the same number of windows by appling zero-padding.
-def collate_fn(data):
+def collate_fn_v1(data):
     """
        data: is a list of tuples with (action features, object features, frame features, sound features, labels, labels_aux, frame_ids, video_ids)
              action.shape  = (windows, action features)
@@ -123,7 +123,7 @@ class Milly_multifeature(torch.utils.data.Dataset):
       self.cfg = cfg        
       self.data_filter = filter
       self.video_as_datapoint = video_as_datapoint
-      self.use_collate = True
+      self.collate_fn = collate_fn_v1
 
       if split == 'train':
         self.annotations_file = cfg.DATASET.TR_ANNOTATIONS_FILE
@@ -506,7 +506,7 @@ class Milly_multifeature_v4(Milly_multifeature):
           else:  
             self.datapoints[ipoint] = window
             ipoint += 1
-            progress.set_postfix({"window total": len(self.datapoints), "padded videos": pad})            
+            progress.set_postfix({"window total": len(self.datapoints), "padded windows": pad})            
 
           previous_stop_frame = stop_frame
 
@@ -851,7 +851,7 @@ class Milly_multifeature_v6(Milly_multifeature_v4):
 
     super().__init__(cfg, split=split, filter=filter, video_as_datapoint=False)
 
-    self.use_collate = False
+    self.collate_fn = collate_fn_v2
     self.video_cache_id = True
     self.frame_cache_maxlen = 500
     self.transform_in_loader = False

@@ -6,6 +6,33 @@ import clip
 import math
 import ipdb
 from step_recog import utils
+from collections import OrderedDict
+
+class _TextEncoder(nn.Module):
+  def __init__(self):
+    super().__init__()
+    self.encoder, _ = clip.load("ViT-B/16", jit=False, download_root=utils.clip_download_root)
+    self.encoder.cuda()
+    self.encoder.eval()
+
+  @torch.no_grad()
+  def forward(self, text):
+    text = clip.tokenize(text).cuda()
+
+    return self.encoder.encode_text(text).detach().cpu().float()
+  
+__textencoder = None
+
+def prepare_txt(text_batch):
+  if text_batch is not None:
+    global __textencoder
+    if __textencoder is None:
+      __textencoder = _TextEncoder()
+
+    text_batch = __textencoder(text_batch)
+
+  torch.cuda.empty_cache()
+  return text_batch
 
 #batch has (B, T, H, W, C) or (T, H, W, C)
 def prepare_img(img_batch, input_channels_last=False):
@@ -29,20 +56,6 @@ class PTGPerceptionBases(nn.Module):
     super().__init__()
     self._device = nn.Parameter(torch.empty(0))
 
-    self.encoder, _ = clip.load("ViT-B/16", jit=False, download_root=utils.clip_download_root)
-    self.encoder.eval()
-
-    for param in self.encoder.parameters():
-      param.requires_grad = False
-
-  def to(self, device):
-    super().to(device)
-
-    if self.encoder is not None:
-      self.encoder = self.encoder.cpu()
-
-    return self  
-
   #Equal to SwinTransformer3d 
   def _init_layer(self, layer):
     if isinstance(layer, nn.Linear):
@@ -52,16 +65,13 @@ class PTGPerceptionBases(nn.Module):
         nn.init.zeros_(layer.bias)      
 
   def update_version(self, state_dict):
-    return state_dict
+    new_dict = OrderedDict()
 
-  def prepare_txt(self, text_batch):
-    if text_batch is not None:
-      encoder_param = next(self.encoder.parameters())
-      text_batch = clip.tokenize(text_batch).to(encoder_param.device)
-      text_batch = self.encoder.encode_text(text_batch)[:, None, None, None, :].cpu().detach().float()      
+    for key in state_dict:
+      if "encoder." not in key:
+        new_dict[key] = state_dict[key]
 
-    torch.cuda.empty_cache()
-    return text_batch  
+    return new_dict
 
   def summary(self):
     trainable_params = 0
@@ -94,7 +104,7 @@ class OmniTransformer_v3(PTGPerceptionBases):
     super().__init__(*args, **kwargs)
 
     self.number_classes = cfg.MODEL.OUTPUT_DIM + 1 #adding no step
-    self.image_branch = torchvision.models.video.swin3d_t(weights = Swin3D_T_Weights.KINETICS400_V1)  #params = 36,610,672
+    self.image_branch = torchvision.models.video.swin3d_t(weights = Swin3D_T_Weights.KINETICS400_V1)  #params = 28,158,070
     self.__prepare_branches()
 
     if load:
@@ -104,10 +114,6 @@ class OmniTransformer_v3(PTGPerceptionBases):
     ##Configure IMAGE head
     self.image_branch.head = nn.Linear(in_features=self.image_branch.head.in_features, out_features=self.number_classes, bias=self.image_branch.head.bias is not None)    
     self._init_layer(self.image_branch.head)
-
-  @torch.no_grad()
-  def prepare(self, img_batch, text_batch = None, input_channels_last=False):
-    return prepare_img(img_batch, input_channels_last=input_channels_last).to(self._device.device).float(), self.prepare_txt(text_batch)
 
   def forward(self, img, text = None):
     return self.image_branch(img)
@@ -118,12 +124,13 @@ class OmniTransformer_v4(PTGPerceptionBases):
     super().__init__(*args, **kwargs)
 
     self.number_classes = cfg.MODEL.OUTPUT_DIM + 1 #adding no step
-    self.image_branch = torchvision.models.video.swin3d_t(weights = Swin3D_T_Weights.KINETICS400_V1)  #params = 36,610,672
+    self.image_branch = torchvision.models.video.swin3d_t(weights = Swin3D_T_Weights.KINETICS400_V1)  #params = 28,158,070
 
-    self.proj_X = torch.nn.Linear(self.image_branch.patch_embed.norm.normalized_shape[0], 512)  #project image tokens to a 512-D space, equal to CLIP
+    self.proj_X = torch.nn.Linear(self.image_branch.patch_embed.norm.normalized_shape[0], 512)  #project image tokens into a 512-D space, equal to CLIP
     self.proj_Z = torch.nn.Linear(512, 512)  #project CLIP space
-    self.proj_XZ = torch.nn.Linear(1024, self.image_branch.patch_embed.norm.normalized_shape[0]) #project concatenation of image and text to the original patch_embed space 
+    self.proj_XZ = torch.nn.Linear(1024, self.image_branch.patch_embed.norm.normalized_shape[0]) #project concatenation of image and text into the original patch_embed space 
     self.proj_gelu = torch.nn.GELU()
+    self.norm = torch.nn.LayerNorm(self.image_branch.patch_embed.norm.normalized_shape, eps=self.image_branch.patch_embed.norm.eps)
 
     self._init_layer(self.proj_X)
     self._init_layer(self.proj_Z)
@@ -132,7 +139,7 @@ class OmniTransformer_v4(PTGPerceptionBases):
     self.__prepare_branches()
 
     if load:
-      self.load_state_dict( self.update_version(torch.load( cfg.MODEL.OMNIGRU_CHECKPOINT_URL )))    
+      self.load_state_dict( self.update_version(torch.load( cfg.MODEL.OMNIGRU_CHECKPOINT_URL )))
 
   def __prepare_branches(self):
     ##Configure IMAGE head
@@ -142,12 +149,10 @@ class OmniTransformer_v4(PTGPerceptionBases):
   def forward(self, img, text):
     ##Equal to SwinTransformer3d.forward()
     X = self.image_branch.patch_embed(img)  # B _T _H _W _C
-    X = self.image_branch.pos_drop(X)
 
     ##Combination of image tokens and text features
-    #1. Interpolate text features to match img batch (S, 1, 1, 1, F) => (B, 1, 1, 1, F)
-    Z = text.permute(1, 2, 3, 0, 4) 
-    Z = torch.nn.functional.interpolate(input = Z, size = (Z.shape[-3], X.shape[0], Z.shape[-1]), mode = "nearest")
+    #1. Interpolate text features to match img batch (S, F) => (B, 1, 1, 1, F)
+    Z = torch.nn.functional.interpolate(input = text[None, None, None, ...], size = (1, X.shape[0], text.shape[1]), mode = "nearest")
     Z = Z.permute(3, 0, 1, 2, 4)
     #2. Repate text features for each image token and project them (B, 1, 1, 1, F) => (B, _T, _H, _W, F)
     Z = Z.repeat(1, X.shape[1], X.shape[2], X.shape[3], 1)
@@ -158,8 +163,11 @@ class OmniTransformer_v4(PTGPerceptionBases):
     XZ = torch.concat((X_proj, Z), -1)
     #5. Project the concatenation to a space with the original feature shape
     X = self.proj_gelu(self.proj_XZ(XZ))
+    #6. Normalize the features again (equal to image_branch.patch_embed)
+    X = self.norm(X)
 
     ##Equal to SwinTransformer3d.forward()
+    X = self.image_branch.pos_drop(X)
     X = self.image_branch.features(X)
     X = self.image_branch.norm(X)
     X = X.permute(0, 4, 1, 2, 3)
@@ -175,7 +183,7 @@ class OmniTransformer_v5(PTGPerceptionBases):
 #    ipdb.set_trace()
 
     self.number_classes = cfg.MODEL.OUTPUT_DIM + 1 #adding no step
-    self.image_branch = torchvision.models.video.swin3d_t(weights = Swin3D_T_Weights.KINETICS400_V1, block = partial(SwinTransformerBlock_CrossAttention, attn_layer=ShiftedWindowAttention3d_CrossAttention))  #params = 36,610,672
+    self.image_branch = torchvision.models.video.swin3d_t(weights = Swin3D_T_Weights.KINETICS400_V1, block = partial(SwinTransformerBlock_CrossAttention, attn_layer=ShiftedWindowAttention3d_CrossAttention))  #params = 28,158,070
     
     self.__prepare_branches()
     self.proj_Z = []
