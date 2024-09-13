@@ -63,12 +63,10 @@ def main():
     else:
       train_hold_out(cfg)
   else:
-    model, _ = build_model(cfg)      
-    weights  = torch.load(cfg.MODEL.OMNIGRU_CHECKPOINT_URL)
-    model.load_state_dict(model.update_version(weights))  
-
-    data   = pd.read_csv(cfg.DATASET.TS_ANNOTATIONS_FILE)
-    _, video_test = my_train_test_split(cfg, data.video_id.unique())   
+    model, _ = build_model(cfg, load = True)      
+    
+    data     = pd.read_csv(cfg.DATASET.TS_ANNOTATIONS_FILE)
+    _, video_test  = my_train_test_split(cfg, data.video_id.unique())   
     ts_data_loader = build_loader(cfg, 'test', video_test)
 
     evaluate(model, ts_data_loader, cfg)
@@ -82,7 +80,7 @@ def build_loader(cfg, split, filter = None, timeout = 0):
     shuffle=False, 
     batch_size=cfg.TRAIN.BATCH_SIZE,
     num_workers=min(math.ceil(len(dataset) / cfg.TRAIN.BATCH_SIZE), cfg.DATALOADER.NUM_WORKERS),
-    collate_fn=datasets.collate_fn if dataset.use_collate else datasets.collate_fn_str,
+    collate_fn=dataset.collate_fn,
     drop_last=split == 'train',
     timeout=timeout)      
 
@@ -104,7 +102,13 @@ def my_train_test_split(cfg, videos):
       videos, video_test = train_test_split(videos, test_size=0.10, random_state=2343) #R18 1740: only with BBN seal_videos.zip
     elif "A8" in cfg.SKILLS[0]["NAME"]:
       videos, video_test = train_test_split(videos, test_size=0.10, random_state=2317) #A8: 2329: only with data until 07/31/2024
-    else: #M4, R16, R19      
+    elif "R19" in cfg.SKILLS[0]["NAME"]:
+      videos, video_test = train_test_split(videos, test_size=0.10, random_state=2321) #R19: 1030: only with data until 07/31/2024
+    elif "R16" in cfg.SKILLS[0]["NAME"]:
+      videos, video_test = train_test_split(videos, test_size=0.10, random_state=2350) #R16: 1030: only with data until 07/31/2024
+    elif "M4" in cfg.SKILLS[0]["NAME"]:
+      videos, video_test = train_test_split(videos, test_size=0.10, random_state=2348) #M4: 1030: only with data until 07/31/2024
+    else:
       videos, video_test = train_test_split(videos, test_size=0.10, random_state=1030)
 
   return videos, video_test
@@ -148,9 +152,8 @@ def train_hold_out(cfg, main_path = None, video_train = None, video_val = None, 
 
   del tr_data_loader
 
-  model, _ = build_model(cfg)      
-  weights  = torch.load(model_name)
-  model.load_state_dict(model.update_version(weights))      
+  cfg.MODEL.OMNIGRU_CHECKPOINT_URL = model_name
+  model, _ = build_model(cfg, load=True)      
 
 ##  cfg.OUTPUT.LOCATION = val_path
 ##  evaluate(model, vl_data_loader, cfg)      

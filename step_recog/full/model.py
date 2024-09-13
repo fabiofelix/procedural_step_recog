@@ -25,6 +25,12 @@ def args_hook(cfg_file):
   args.opts = None   
   return args
 
+def build_model(cfg_file, fps):
+  MODEL_CLASS = load_config(args_hook(cfg_file))
+  MODEL_CLASS = StepPredictor_GRU if "gru" in MODEL_CLASS.MODEL.CLASS.lower() else StepPredictor_Transformer
+
+  return  MODEL_CLASS(cfg_file, fps).to("cuda")    
+
 class StepPredictor(nn.Module):
     """Step prediction model that takes in frames and outputs step probabilities.
     """
@@ -158,11 +164,11 @@ class StepPredictor_Transformer(StepPredictor):
         super().__init__(cfg_file, video_fps)
 
         # build model
-        MODEL_CLASS = getattr(models_v2, self.cfg.MODEL.CLASS)
-        self.head = MODEL_CLASS(self.cfg, load=True)
+        HEAD_CLASS = getattr(models_v2, self.cfg.MODEL.CLASS)
+        self.head = HEAD_CLASS(self.cfg, load=True)
         self.head.eval()
 
-        self.steps_feat = self.head.prepare_txt(self.cfg.SKILLS[0]["STEPS"])
+        self.steps_feat = models_v2.prepare_txt(self.cfg.SKILLS[0]["STEPS"])
 
         self.create_queue(video_fps * 2) #default: 2seconds 
 
