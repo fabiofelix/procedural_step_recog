@@ -4,6 +4,7 @@
 
 import torch
 from collections import OrderedDict
+from step_recog.full.download import cached_download_file
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -59,7 +60,8 @@ class OmniGRU(torch.nn.Module):
         self.relu = torch.nn.ReLU()
 
         if load:
-          self.load_state_dict( self.update_version(torch.load( cfg.MODEL.OMNIGRU_CHECKPOINT_URL )))
+          f = cfg.MODEL.OMNIGRU_CHECKPOINT_URL or cached_download_file(cfg.MODEL.PRETRAINED_CHECKPOINT_URL)
+          self.load_state_dict(self.update_version(torch.load(f)))
         else:
           self.apply(custom_weights)
 
