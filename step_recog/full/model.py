@@ -43,14 +43,11 @@ def get_omnivore(cfg_fname):
 class StepPredictor(nn.Module):
     """Step prediction model that takes in frames and outputs step probabilities.
     """
-    def __init__(self, cfg_file, variant=None, video_fps = 30):
+    def __init__(self, cfg_file, video_fps = 30):
         super().__init__()
         self._device = nn.Parameter(torch.empty(0))
         # load config
         self.cfg = load_config(args_hook(cfg_file)).clone() # clone prob not necessary but tinfoil
-        if variant:
-            print("Variants:", set(self.cfg.MODEL.VARIANTS))
-            self.cfg.MODEL.OMNIGRU_CHECKPOINT_URL = self.cfg.MODEL.VARIANTS[variant]
 
         # assign vocabulary
         self.STEPS = np.array([
@@ -138,7 +135,8 @@ class StepPredictor_GRU(StepPredictor):
         return self
 
     def reset(self):
-      super().__init__()
+      #super().__init__()
+      super().reset()
       self.h = None
 
     def queue_frame(self, image):
