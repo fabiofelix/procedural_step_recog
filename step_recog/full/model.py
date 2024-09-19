@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+import functools
 from torch import nn
 from collections import deque
 from ultralytics import YOLO
@@ -31,14 +32,22 @@ def build_model(cfg_file, fps):
 
   return  MODEL_CLASS(cfg_file, fps).to("cuda")    
 
+
+@functools.lru_cache(1)
+def get_omnivore(cfg_fname):
+    omni_cfg = act_load_config(args_hook(cfg_fname))
+    omnivore = Omnivore(omni_cfg, resize = False)
+    return omnivore, omni_cfg
+
+
 class StepPredictor(nn.Module):
     """Step prediction model that takes in frames and outputs step probabilities.
     """
     def __init__(self, cfg_file, video_fps = 30):
         super().__init__()
-        # load config
         self._device = nn.Parameter(torch.empty(0))
-        self.cfg = load_config(args_hook(cfg_file))
+        # load config
+        self.cfg = load_config(args_hook(cfg_file)).clone() # clone prob not necessary but tinfoil
 
         # assign vocabulary
         self.STEPS = np.array([
@@ -74,34 +83,60 @@ class StepPredictor(nn.Module):
 class StepPredictor_GRU(StepPredictor):
     def __init__(self, cfg_file, video_fps = 30):
         super().__init__(cfg_file, video_fps)
-        self.omni_cfg = act_load_config(args_hook(self.cfg.MODEL.OMNIVORE_CONFIG))
+#        self.omni_cfg = act_load_config(args_hook(self.cfg.MODEL.OMNIVORE_CONFIG))
 
         self.MAX_OBJECTS = 25
-        self.transform = transforms.Compose([
-          transforms.Resize(self.omni_cfg.MODEL.IN_SIZE),
-          transforms.CenterCrop(self.omni_cfg.MODEL.IN_SIZE)
-        ])            
+#        self.transform = transforms.Compose([
+#          transforms.Resize(self.omni_cfg.MODEL.IN_SIZE),
+#          transforms.CenterCrop(self.omni_cfg.MODEL.IN_SIZE)
+#        ])            
         
         # build model
         self.head = OmniGRU(self.cfg, load=True)
         self.head.eval()
+        frame_queue_len = 1
         if self.cfg.MODEL.USE_ACTION:
-            self.omnivore = Omnivore(self.omni_cfg, resize = False)
+            omnivore, omni_cfg = get_omnivore(self.cfg.MODEL.OMNIVORE_CONFIG)
+            self.omnivore = omnivore
+            self.omni_cfg = omni_cfg
+            frame_queue_len = self.omni_cfg.DATASET.FPS * self.omni_cfg.MODEL.WIN_LENGTH
+            frame_queue_len = video_fps * self.omni_cfg.MODEL.WIN_LENGTH #default: 2seconds
+            self.transform = transforms.Compose([
+              transforms.Resize(self.omni_cfg.MODEL.IN_SIZE),
+              transforms.CenterCrop(self.omni_cfg.MODEL.IN_SIZE)
+            ])                        
+            #self.omnivore = Omnivore(self.omni_cfg, resize = False)
         if self.cfg.MODEL.USE_OBJECTS:
             yolo_checkpoint = cached_download_file(self.cfg.MODEL.YOLO_CHECKPOINT_URL)
             self.yolo = YOLO(yolo_checkpoint)
             self.yolo.eval = lambda *a: None
             self.clip_patches = ClipPatches(utils.clip_download_root)
             self.clip_patches.eval()
+            names = self.yolo.names
+            self.OBJECT_LABELS = np.array([str(names.get(i, i)) for i in range(len(names))])
+        else:
+            self.OBJECT_LABELS = np.array([], dtype=str)
         if self.cfg.MODEL.USE_AUDIO:
             raise NotImplementedError()
         
         # frame buffers and model state
-        self.create_queue(video_fps * self.omni_cfg.MODEL.WIN_LENGTH) #default: 2seconds 
+        self.frame_queue_len = frame_queue_len
+        self.create_queue(frame_queue_len) #default: 2seconds 
         self.h = None          
 
+
+    def eval(self):
+        y=self.yolo
+        self.yolo = None
+        super().eval()
+        self.head.eval()
+        self.omnivore.eval()
+        self.yolo=y
+        return self
+
     def reset(self):
-      super().__init__()
+      #super().__init__()
+      super().reset()
       self.h = None
 
     def queue_frame(self, image):
@@ -115,7 +150,7 @@ class StepPredictor_GRU(StepPredictor):
     def prepare(self, im):
       return self.transform(Image.fromarray(im)) 
     
-    def forward(self, image, queue_frame = True):
+    def forward(self, image, queue_frame = True, return_objects=False):
         # compute yolo
         Z_objects, Z_frame = torch.zeros((1, 1, 25, 0)).float(), torch.zeros((1, 1, 1, 0)).float()
         if self.cfg.MODEL.USE_OBJECTS:
@@ -145,6 +180,7 @@ class StepPredictor_GRU(StepPredictor):
               self.queue_frame(image)
 
             # compute omnivore embeddings
+            # [1, 32, 3, H, W]
             X_omnivore = torch.stack(list(self.input_queue), dim=1)[None]
             frame_idx = np.linspace(0, self.input_queue.maxlen - 1, self.omni_cfg.MODEL.NFRAMES).astype('long') #same as act_recog.dataset.milly.py:pack_frames_to_video_clip
             X_omnivore = X_omnivore[:, :, frame_idx, :, :]
@@ -154,9 +190,19 @@ class StepPredictor_GRU(StepPredictor):
         # mix it all together
         if self.h is None:
           self.h = self.head.init_hidden(Z_action.shape[0])
-          
-        prob_step, self.h = self.head(Z_action.to(self._device.device), self.h.float(), Z_audio.to(self._device.device), Z_objects.to(self._device.device), Z_frame.to(self._device.device))
+        
+        device = self._device.device
+        prob_step, self.h = self.head(
+            Z_action.to(device), 
+            self.h.float(), 
+            Z_audio.to(device), 
+            Z_objects.to(device), 
+            Z_frame.to(device))
+        
         prob_step = torch.softmax(prob_step[..., :-2].detach(), dim=-1) #prob_step has <n classe positions> <1 no step position> <2 begin-end frame identifiers>
+        
+        if return_objects:
+            return prob_step, results
         return prob_step           
 
 class StepPredictor_Transformer(StepPredictor):
