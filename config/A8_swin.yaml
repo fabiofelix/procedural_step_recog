@@ -3,7 +3,7 @@ MODEL:
   CLASS: OmniTransformer_v4
   OMNIGRU_CHECKPOINT_URL: /home/user/models/A8_swin.pt
   OUTPUT_DIM: 5
-  YOLO_CHECKPOINT_URL: '/home/user/models/bbn_yolo_A8.pt'
+  YOLO_CHECKPOINT_URL: ''
 
 DATASET:
   TR_ANNOTATIONS_FILE: "/home/user/labels/A8_Alabama_videos.csv"
