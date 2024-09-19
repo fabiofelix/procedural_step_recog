@@ -8,6 +8,7 @@ import ipdb
 from torchvision import transforms
 from PIL import Image
 from abc import abstractmethod
+import yaml
 
 from act_recog.models import Omnivore
 from act_recog.config import load_config as act_load_config
@@ -20,22 +21,31 @@ from step_recog import utils
 from step_recog.full.clip_patches import ClipPatches
 from step_recog.full.download import cached_download_file
 
-def args_hook(cfg_file):
-  args = lambda: None
-  args.cfg_file = cfg_file
-  args.opts = None   
-  return args
+"""
+  cfg_file: model configuration
+  fps: create the right frame cache size
+  skill: if provided, search for the skill configurations in the cfg_file
+  variant: returns the right model variation from the cfg_file (only works when skill is not None) 
+"""
+def build_model(cfg_file, fps, skill=None, variant=0):
+  if skill is not None:
+    file = open(cfg_file, "r")
 
-def build_model(cfg_file, fps):
-  MODEL_CLASS = load_config(args_hook(cfg_file))
+    try:
+      cfg_file = yaml.safe_load(file)
+      cfg_file = cfg_file["MODELS"][  skill.upper()  ]
+      cfg_file = cfg_file[variant]["CONFIG"] if len(cfg_file) > 1 else cfg_file[0]["CONFIG"]
+    finally:
+      file.close()
+
+  MODEL_CLASS = load_config(cfg_file)
   MODEL_CLASS = StepPredictor_GRU if "gru" in MODEL_CLASS.MODEL.CLASS.lower() else StepPredictor_Transformer
 
-  return  MODEL_CLASS(cfg_file, fps).to("cuda")    
-
+  return  MODEL_CLASS(cfg_file, fps).to("cuda")  
 
 @functools.lru_cache(1)
 def get_omnivore(cfg_fname):
-    omni_cfg = act_load_config(args_hook(cfg_fname))
+    omni_cfg = act_load_config(cfg_fname)
     omnivore = Omnivore(omni_cfg, resize = False)
     return omnivore, omni_cfg
 
@@ -47,7 +57,7 @@ class StepPredictor(nn.Module):
         super().__init__()
         self._device = nn.Parameter(torch.empty(0))
         # load config
-        self.cfg = load_config(args_hook(cfg_file)).clone() # clone prob not necessary but tinfoil
+        self.cfg = load_config(cfg_file).clone() # clone prob not necessary but tinfoil
 
         # assign vocabulary
         self.STEPS = np.array([
@@ -83,7 +93,7 @@ class StepPredictor(nn.Module):
 class StepPredictor_GRU(StepPredictor):
     def __init__(self, cfg_file, video_fps = 30):
         super().__init__(cfg_file, video_fps)
-#        self.omni_cfg = act_load_config(args_hook(self.cfg.MODEL.OMNIVORE_CONFIG))
+#        self.omni_cfg = act_load_config(self.cfg.MODEL.OMNIVORE_CONFIG)
 
         self.MAX_OBJECTS = 25
 #        self.transform = transforms.Compose([
