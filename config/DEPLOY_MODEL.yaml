@@ -1,0 +1,18 @@
+MODELS:
+  A8:
+    - CONFIG: "config/A8_gru.yaml"
+    - CONFIG: "config/A8_win.yaml"
+  M2:
+    - CONFIG: "config/M2.yaml"
+  M3:
+    - CONFIG: "config/M3.yaml"
+  M4:
+    - CONFIG: "config/M4.yaml"
+  M5:
+    - CONFIG: "config/M5.yaml"
+  R16:
+    - CONFIG: "config/R16.yaml"
+  R18:
+    - CONFIG: "config/R18.yaml"
+  R19:
+    - CONFIG: "config/R19.yaml"
