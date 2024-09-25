@@ -1,6 +1,7 @@
 _BASE_: STEPGRU_BASE.yaml
 MODEL:
-  OMNIGRU_CHECKPOINT_URL: 
+  CLASS: OmniGRU
+  OMNIGRU_CHECKPOINT_URL: /home/user/models/A8.pt
   OUTPUT_DIM: 5
   YOLO_CHECKPOINT_URL: '/home/user/models/bbn_yolo_A8.pt'
 

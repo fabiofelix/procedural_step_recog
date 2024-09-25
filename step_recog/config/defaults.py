@@ -140,7 +140,6 @@ def find_config_file(cfg_file):
         CONFIG_DIR / f'{cfg_file}.yml',
     ]
     for f in cfg_files:
-        #print("checking", os.path.abspath(f), os.path.isfile(f))
         if os.path.isfile(f):
             return f
     raise FileNotFoundError(cfg_file)
