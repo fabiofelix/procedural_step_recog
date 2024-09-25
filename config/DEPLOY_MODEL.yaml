@@ -1,6 +1,6 @@
 MODELS:
   A8:
-    - CONFIG: "config/A8.yaml"
+    - CONFIG: "config/A8_gru.yaml"
     - CONFIG: "config/A8_swin.yaml"
   M2:
     - CONFIG: "config/M2.yaml"
