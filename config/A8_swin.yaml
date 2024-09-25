@@ -1,0 +1,23 @@
+_BASE_: STEPGRU_BASE.yaml
+MODEL:
+  CLASS: OmniTransformer_v4
+  OMNIGRU_CHECKPOINT_URL: 
+  OUTPUT_DIM: 5
+  YOLO_CHECKPOINT_URL: '/home/user/models/bbn_yolo_A8.pt'
+
+DATASET:
+  TR_ANNOTATIONS_FILE: "/home/user/labels/A8_Alabama_videos.csv"
+  VL_ANNOTATIONS_FILE: "/home/user/labels/A8_Alabama_videos.csv"
+  TS_ANNOTATIONS_FILE: "/home/user/labels/A8_Alabama_videos.csv"
+
+OUTPUT:
+  LOCATION: "/home/user/output"
+
+SKILLS:
+  - NAME: A8 - Nasopharyngeal Airway (NPA)
+    STEPS:
+      - Select NPA tube that best fits casualty.
+      - Place casualty into 'sniffing position' with head tilted back and nostrils exposed.
+      - Cover NPA with lube.
+      - Insert NPA perpendicular to casualty nostril until flange meets tip of nose, rotating along the way.
+      - Look, listen, and feel for airway compliance.      
