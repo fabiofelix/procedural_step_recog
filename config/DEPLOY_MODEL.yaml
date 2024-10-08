@@ -7,7 +7,7 @@ MODELS:
   M3:
     - CONFIG: "config/M3.yaml"
   M4:
-    - CONFIG: "config/M4.yaml"
+    - CONFIG: "config/M4_gru.yaml"
     - CONFIG: "config/M4_swin.yaml"
   M5:
     - CONFIG: "config/M5.yaml"

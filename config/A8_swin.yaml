@@ -1,4 +1,4 @@
 _BASE_: A8_gru.yaml
 MODEL:
-  CLASS: OmniTransformer_v4
+  CLASS: OmniTransformer_v3
   OMNIGRU_CHECKPOINT_URL: /home/user/models/A8_swin.pt
