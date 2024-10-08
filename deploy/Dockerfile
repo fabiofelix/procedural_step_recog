@@ -1,4 +1,6 @@
 FROM pytorch/pytorch:2.4.0-cuda11.8-cudnn9-runtime
+ARG DEBIAN_FRONTEND=noninteractive
+ENV TZ="America/New_York"
 
 WORKDIR /src/app
 
@@ -6,7 +8,7 @@ WORKDIR /src/app
 RUN apt-get update && apt-get install -y python3-opencv git && rm -rf /var/lib/apt/lists/*
 
 # install ptgctl
-RUN pip install https://github.com/VIDA-NYU/ptgctl.git
+RUN pip install git+https://github.com/VIDA-NYU/ptgctl.git
 
 # install dependencies
 ADD deploy/requirements.txt deploy/
