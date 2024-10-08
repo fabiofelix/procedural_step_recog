@@ -1,0 +1,28 @@
+
+version: '3.7'
+
+services:
+  perception:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: bbn-perception:latest
+    container_name: perception
+    restart: unless-stopped
+    volumes:
+      - /dev/shm:/dev/shm
+      - ${VOLUMES:-./data}/models:/src/app/models
+      - ${VOLUMES:-./data}/models/cache:/root/.cache
+      - ${VOLUMES:-./data}/models/torch_iocache:/root/.torch/iopath_cache
+    environment:
+      PYTHONUNBUFFERED: "1"
+    devices:
+     - /dev/nvidia0:/dev/nvidia0
+     #- /dev/nvidia1:/dev/nvidia1
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              capabilities: [gpu]
+              count: 1  # could be 2
