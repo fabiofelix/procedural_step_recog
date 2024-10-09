@@ -15,10 +15,22 @@ import torch
 import ray
 import functools
 import ptgctl
-from ptgctl import holoframe, asyncio_graph as ag
+import ptgctl.async_graph as ag
+from ptgctl import holoframe
+from models import AllInOneModel
 
 ray.init(num_gpus=2)
 
+
+model = AllInOneModel.remote(model_type=[0])
+# model2 = AllInOneModel.remote(model_type=[1])
+
+MODELS = {
+    None: model,
+    # 'model2': model2,
+}
+if torch.cuda.device_count() > 1:
+    MODELS['model2'] = AllInOneModel.remote(model_type=[1])
 
 holoframe_load = functools.lru_cache(maxsize=32)(holoframe.load)
 
@@ -34,7 +46,7 @@ class Perception:
     @ptgctl.util.async2sync
     async def run(self, *a, **kw):
         '''Persistent running app, with error handling and recipe status watching.'''
-        self.session = MultiStepsSession()
+        self.session = MultiStepsSession(MODELS)
         while True:
             try:
                 await self.run_loop(*a, **kw)
@@ -76,8 +88,6 @@ class Perception:
                     try:
                         # watch recipe changes
                         if sid == recipe_sid or sid == vocab_sid:
-                            #if time.time() - t0 < 1 and recipe_id == d.decode(): # HOTFIX: why does this happen?
-                            #    continue
                             d = d.decode() if d else None
                             print("recipe changed", recipe_id, '->', d, flush=True)
                             recipe_id = d if d else None
@@ -107,7 +117,6 @@ class Perception:
                 imgs = [x for _, _, x in xs]
 
                 # predict actions
-                #for img in imgs:
                 preds = await self.session.on_image(imgs)
                 if preds is not None:
                         out_queue.push([preds, t])
@@ -152,161 +161,24 @@ def jsondump(data):
     return orjson.dumps(data, option=orjson.OPT_NAIVE_UTC | orjson.OPT_SERIALIZE_NUMPY)
 
 
+class MultiStepsSession:
+    def __init__(self, models):
+        self.sessions = []
+        for prefix, model in models.items():
+            self.sessions.append(StepsSession(prefix, model))
+        s = self.sessions[0]
+        self.out_sids = s.out_sids
 
-import ray
-import models
-import functools
-from step_recog.full.model import build_model, StepPredictor
-from step_recog.full.statemachine import ProcedureStateMachine
+    async def load_skill(self, recipe_id):
+        await asyncio.gather(*[s.load_skill(recipe_id) for s in self.sessions])
 
-@functools.lru_cache(3)
-def get_model(skill, device):
-    from step_recog.full.model import StepPredictor
-    return StepPredictor(skill).to(device)
+    async def on_image(self, imgs):
+        data = {}
+        ds = await asyncio.gather(*[s.on_image(imgs) for s in self.sessions])
+        for d in ds:
+            data.update(d or {})
+        return data
 
-
-
-def cvt_objects(outputs, labels):
-    boxes = outputs[0].boxes.cpu()
-    objects = as_v1_objs(
-           boxes.xyxyn.numpy(),
-           boxes.conf.numpy(),
-           boxes.cls.numpy(),
-           labels[boxes.cls.int().numpy()],
-           conf_threshold=0.5)
-
-def as_v1_objs(xyxy, confs, class_ids, labels, conf_threshold=0.1):
-        # filter low confidence
-        objects = []
-        for xy, c, cid, l in zip(xyxy, confs, class_ids, labels):
-            if c < conf_threshold: continue
-            objects.append({
-                "xyxyn": xy.tolist(),
-                "confidence": c,
-                "class_id": cid,
-                "label": l,
-            })
-        return objects
-
-
-@ray.remote(num_gpus=1)
-class AllInOneModel:
-    def __init__(self, skill=None, model_type=None):
-        if not isinstance(model_type, (list, tuple)):
-            model_type = [model_type]
-
-        self.model_disabled = False
-        self.model_type = model_type
-        self.MODEL_CACHE = {}
-        #self.device = 'cuda'#torch.cuda.current_device()
-        self.device = torch.cuda.current_device()
-        print(self.device)
-        try:
-            print("Preloading cache")
-            for s in getattr(StepPredictor, 'PRELOAD_SKILLS', []):
-                print("Preloading", s)
-                self.load_skill(s)
-            #print("Preloaded.")
-        except Exception as e:
-            import traceback
-            traceback.print_exc()
-            print('Failed to preload models:', type(e), e)
-        skill and self.load_skill(skill)
-
-    def get_model(self, skill):
-        skill = skill.upper()
-        if skill not in self.MODEL_CACHE:
-            for mt in self.model_type:
-                try:
-                    print("Trying to load:", skill, mt)
-                    #self.MODEL_CACHE[skill] = StepPredictor(skill.upper(), variant=mt).to(self.device)
-                    self.MODEL_CACHE[skill] = build_model(skill=skill.upper(), variant=mt, fps=10).to(self.device)
-                    self.model_disabled = False
-                    print("Success")
-                    break
-                except KeyError:
-                    pass
-            else:
-                print("Disabling model", skill, self.model_type)
-                self.model_disabled = True
-                return 
-
-        model = self.MODEL_CACHE[skill]
-        model.reset()
-        model.eval()
-        self.yolo_disabled = not hasattr(model, 'yolo')
-        
-        # y=model.yolo
-        # model.yolo = None
-        # model.eval()
-        # model.head.eval()
-        # model.omnivore.eval()
-        # model.yolo=y
-        return model
-
-    def load_skill(self, skill):
-        print("loading skill", skill)
-        skill = skill.decode() if isinstance(skill, bytes) else skill or None
-        self.model = self.get_model(skill)
-        if self.model_disabled:
-            return
-        self.sm = ProcedureStateMachine(len(self.model.STEPS))
-        print(555, skill, self.model.cfg.MODEL.OUTPUT_DIM, len(self.model.STEPS), self.model.STEPS)
-        self.model.h = None
-        print(666, skill, self.model.h is None, self.sm.current_state)
-
-    def get_steps(self):
-        if self.model_disabled:
-            return []
-        return self.model.STEPS
-
-    @torch.no_grad()
-    def queue_frames(self, ims_bgr):
-        for im in ims_bgr:
-            self.model.queue_frame(im)
-
-    @torch.no_grad()
-    def forward(self, ims_bgr):
-        if self.model_disabled:
-            return None, None, None
-
-        #print(ims_bgr.shape)
-        ims_bgr = [np.ascontiguousarray(im[:,:,::-1]) for im in ims_bgr]
-        for im in ims_bgr[:-1]:
-            self.model.queue_frame(im)
-        #if not self.model.has_omni_maxlen():
-        #    return None, None, None
-        if self.yolo_disabled:
-            preds = self.model(ims_bgr[-1])
-            objects = None
-        else:
-            preds, box_results = self.model(ims_bgr[-1], return_objects=True)
-            objects = cvt_objects(box_results, self.model.OBJECT_LABELS)
-        try:
-            self.sm.process_timestep(preds.cpu().squeeze().numpy())
-        except Exception as e:
-            print("\nerror state update", preds, self.sm.current_state, type(e).__name__, e)
-        state = self.sm.current_state
-        return preds, objects, state
-
-    @torch.no_grad()
-    def forward_boxes(self, im_bgr):
-        if self.model_disabled or self.yolo_disabled:
-            return None
-
-        #im_rgb = im_bgr[:,:,::-1]  # from src: im = im[..., ::-1].transpose((0, 3, 1, 2))  # BGR to RGB, BHWC to BCHW, (n, 3, h, w)
-        #print(im_bgr.shape)
-        box_results = self.model.yolo(im_bgr, verbose=False)
-        objects = cvt_objects(box_results, self.model.OBJECT_LABELS)
-        return objects
-
-model = AllInOneModel.remote(model_type=[0])
-model2 = AllInOneModel.remote(model_type=[1])
-
-MODELS = {
-    None: model,
-    'model2': model2,
-}
 
 
 class StepsSession:
@@ -387,30 +259,6 @@ class StepsSession:
         ]
 
 STATES = ['unobserved', 'current', 'done']
-
-
-
-class MultiStepsSession:
-    def __init__(self, models=MODELS):
-        self.sessions = []
-        for prefix, model in models.items():
-            self.sessions.append(StepsSession(prefix, model))
-        s = self.sessions[0]
-        self.out_sids = s.out_sids
-
-    async def load_skill(self, recipe_id):
-        await asyncio.gather(*[s.load_skill(recipe_id) for s in self.sessions])
-
-    async def on_image(self, imgs):
-        data = {}
-        ds = await asyncio.gather(*[s.on_image(imgs) for s in self.sessions])
-        for d in ds:
-            data.update(d or {})
-        return data
-
-    #def get_steps(self, state, confidence, i=0):
-    #    return self.sessions[i].get_steps(state, confidence)
-
 
 
 if __name__ == '__main__':

@@ -23,4 +23,4 @@ ADD . .
 
 ADD deploy deploy
 
-CMD ["deploy/main.py", "run"]
+CMD ["python3", "deploy/main.py", "run"]
