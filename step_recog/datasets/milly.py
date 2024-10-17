@@ -127,7 +127,7 @@ class Milly_multifeature(torch.utils.data.Dataset):
 
       if split == 'train':
         self.annotations_file = cfg.DATASET.TR_ANNOTATIONS_FILE
-      elif split == 'validation':
+      elif split in ['val', 'validation']:
         self.annotations_file = cfg.DATASET.TR_ANNOTATIONS_FILE if cfg.DATASET.VL_ANNOTATIONS_FILE == '' else cfg.DATASET.VL_ANNOTATIONS_FILE
       elif split == 'test':
         self.annotations_file = cfg.DATASET.VL_ANNOTATIONS_FILE if cfg.DATASET.TS_ANNOTATIONS_FILE == '' else cfg.DATASET.TS_ANNOTATIONS_FILE
@@ -196,7 +196,8 @@ class Milly_multifeature_v4(Milly_multifeature):
     self.transform = transforms.Compose([
       transforms.Resize(self.omni_cfg.MODEL.IN_SIZE),
       transforms.CenterCrop(self.omni_cfg.MODEL.IN_SIZE)
-    ])    
+    ])
+    self.transform_aux = None        
 
     if self.cfg.MODEL.USE_OBJECTS:
       yolo_checkpoint = cached_download_file(cfg.MODEL.YOLO_CHECKPOINT_URL)
@@ -214,7 +215,6 @@ class Milly_multifeature_v4(Milly_multifeature):
 
     self.frame_cache_maxlen = None
     self.video_cache_id = False
-    self.transform_in_loader = True
 
     if self.cfg.MODEL.USE_AUDIO:
       self.slowfast = SlowFast(self.slowfast_cfg)
@@ -434,7 +434,7 @@ class Milly_multifeature_v4(Milly_multifeature):
       tail = video_ids[self.cfg.TRAIN.BATCH_SIZE * match_factor:]
       pad = self.cfg.TRAIN.BATCH_SIZE - len(tail)
 
-      if 0 < pad and pad < self.cfg.TRAIN.BATCH_SIZE:
+      if self.video_as_datapoint and 0 < pad and pad < self.cfg.TRAIN.BATCH_SIZE:
         video_ids.extend(video_ids[:pad])
       else:
         pad = 0      
@@ -443,7 +443,7 @@ class Milly_multifeature_v4(Milly_multifeature):
     hop_size_perc = [0.125, 0.25, 0.5] if self.time_augs else [0.5]
     start_delta   = 5  #smallest step per skill M1: 2 frames; M2: 7 frames, M3: 9 frames, M5: 21 frames, R18: 5 frames
 
-    progress = tqdm.tqdm(video_ids, total=len(video_ids), desc = "Video")
+    progress = tqdm.tqdm(video_ids, total=len(video_ids), desc = "Video {}".format(split))
 
     for v in video_ids:   
       progress.update(1)
@@ -538,6 +538,16 @@ class Milly_multifeature_v4(Milly_multifeature):
         total_window += len(video_windows)
         progress.set_postfix({"window total": total_window, "padded videos": pad})
 
+    if not self.video_as_datapoint and split == "train":
+      match_factor = int(len(self.datapoints) / self.cfg.TRAIN.BATCH_SIZE)
+      tail = list(self.datapoints)[self.cfg.TRAIN.BATCH_SIZE * match_factor:]
+      pad = self.cfg.TRAIN.BATCH_SIZE - len(tail)
+
+      if 0 < pad and pad < self.cfg.TRAIN.BATCH_SIZE:
+        for idx in range(pad):
+          self.datapoints[ipoint] = self.datapoints[idx]
+          ipoint += 1
+          progress.set_postfix({"window total": len(self.datapoints), "padded windows": pad})
 
   def augment_frames_aux(self, frames, frame_ids, aug):
     new_frames = []
@@ -614,10 +624,7 @@ class Milly_multifeature_v4(Milly_multifeature):
 ##          frame = cv2.imread(frame_path)
 ##          frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
           frame = Image.open(frame_path)
-
-          if self.transform_in_loader:
-            frame = self.transform(frame)
-
+          frame = self.transform(frame)
           frame = np.array(frame)
           self.frame_cache[cache_id] = {"frame": frame, "new": True}
 
@@ -854,7 +861,6 @@ class Milly_multifeature_v6(Milly_multifeature_v4):
     self.collate_fn = collate_fn_v2
     self.video_cache_id = True
     self.frame_cache_maxlen = 500
-    self.transform_in_loader = False
 
 ##Returns windows as datapoints and frames as timesteps
   @torch.no_grad()
@@ -866,7 +872,8 @@ class Milly_multifeature_v6(Milly_multifeature_v4):
     window_frames = self.augment_frames(window_frames, window_frame_ids, window["video_id"])
     window_frames = torch.from_numpy(np.array(window_frames))
 
-    window_frames = self.transform(window_frames, input_channels_last=True)
+    if self.transform_aux is not None:
+      window_frames = self.transform_aux(window_frames, input_channels_last=True)
 
     window_step_label = torch.from_numpy(np.array(window["label"]))
     window_stop_frame = torch.from_numpy(np.array(window["stop_frame"]))
