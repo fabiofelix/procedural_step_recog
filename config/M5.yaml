@@ -1,6 +1,6 @@
 _BASE_: STEPGRU_BASE.yaml
 MODEL:
-  OMNIGRU_CHECKPOINT_URL: '/home/user/models/M5/step_gru_best_model.pt'
+  OMNIGRU_CHECKPOINT_URL: '/home/user/models/M5.pt'
   OUTPUT_DIM: 5
   YOLO_CHECKPOINT_URL: '/home/user/models/bbn_yolo_M5.pt'  
 

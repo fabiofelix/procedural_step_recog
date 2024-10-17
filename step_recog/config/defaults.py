@@ -109,6 +109,9 @@ def load_config(args):
         args (argument): arguments includes `shard_id`, `num_shards`,
             `init_method`, `cfg_file`, and `opts`.
     """
+    # the config is already loaded
+    if isinstance(args, CfgNode):
+        return args
     # Setup cfg.
     cfg = get_cfg()
     # Load config from cfg.
@@ -124,13 +127,15 @@ def load_config(args):
     return cfg
 
 # get built-in configs from the step_recog/config directory
-CONFIG_DIR = pathlib.Path(__file__).parent.parent.parent / 'config'
+ROOT_DIR = pathlib.Path(__file__).parent.parent.parent
+CONFIG_DIR = ROOT_DIR / 'config'
 
 
 def find_config_file(cfg_file):
     cfg_files = [
         cfg_file,  # you passed a valid config file path
         CONFIG_DIR / cfg_file,  # a path relative to the config directory
+        ROOT_DIR / cfg_file, 
         CONFIG_DIR / f'{cfg_file}.yaml',  # the name without the extension
         CONFIG_DIR / f'{cfg_file}.yml',
     ]

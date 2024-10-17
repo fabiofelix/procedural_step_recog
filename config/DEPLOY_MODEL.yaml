@@ -1,18 +1,33 @@
 MODELS:
   A8:
-    - CONFIG: "config/A8_gru.yaml"
-    - CONFIG: "config/A8_win.yaml"
+    - CONFIG: "config/A8.yaml"
+      CHECKPOINT: "/home/user/models/A8.pt"
+    - CONFIG: "config/A8_swin.yaml"
+      CHECKPOINT: "/home/user/models/A8_swin.pt"
   M2:
     - CONFIG: "config/M2.yaml"
+      CHECKPOINT: "/home/user/models/M2.pt"
   M3:
     - CONFIG: "config/M3.yaml"
+      CHECKPOINT: "/home/user/models/M3.pt"
   M4:
     - CONFIG: "config/M4.yaml"
+      CHECKPOINT: "/home/user/models/M4.pt"
+    - CONFIG: "config/M4_swin.yaml"
+      CHECKPOINT: "/home/user/models/M4_swin.pt"
   M5:
     - CONFIG: "config/M5.yaml"
+      CHECKPOINT: "/home/user/models/M5.pt"
   R16:
     - CONFIG: "config/R16.yaml"
+      CHECKPOINT: "/home/user/models/R16.pt"
+    - CONFIG: "config/R16_swin.yaml"
+      CHECKPOINT: "/home/user/models/R16_swin.pt"
   R18:
     - CONFIG: "config/R18.yaml"
+      CHECKPOINT: "/home/user/models/R18.pt"
   R19:
     - CONFIG: "config/R19.yaml"
+      CHECKPOINT: "/home/user/models/R19.pt"
+    - CONFIG: "config/R19_swin.yaml"
+      CHECKPOINT: "/home/user/models/R19_swin.pt"

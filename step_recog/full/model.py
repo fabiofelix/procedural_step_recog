@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import torch
 import functools
@@ -21,27 +22,38 @@ from step_recog import utils
 from step_recog.full.clip_patches import ClipPatches
 from step_recog.full.download import cached_download_file
 
+VARIANT_CFG_FILE = os.path.abspath(os.path.join(__file__, '../../../', 'config/DEPLOY_MODEL.yaml'))
+
 """
   cfg_file: model configuration
   fps: create the right frame cache size
   skill: if provided, search for the skill configurations in the cfg_file
   variant: returns the right model variation from the cfg_file (only works when skill is not None) 
 """
-def build_model(cfg_file, fps, skill=None, variant=0):
+def build_model(cfg_file=None, fps=10, skill=None, variant=0, checkpoint_path=None):
   if skill is not None:
-    file = open(cfg_file, "r")
+      # load variant config
+      with open(cfg_file or VARIANT_CFG_FILE, "r") as file:
+          var_cfg = yaml.safe_load(file)["MODELS"][skill.upper()]
+          var_cfg = var_cfg[int(variant) if len(var_cfg) > 1 else 0]
+          cfg_file = var_cfg["CONFIG"]
+          checkpoint_path = checkpoint_path or var_cfg.get("CHECKPOINT")
 
-    try:
-      cfg_file = yaml.safe_load(file)
-      cfg_file = cfg_file["MODELS"][  skill.upper()  ]
-      cfg_file = cfg_file[variant]["CONFIG"] if len(cfg_file) > 1 else cfg_file[0]["CONFIG"]
-    finally:
-      file.close()
+  cfg = load_config(cfg_file)
+  head_name = cfg.MODEL.CLASS
+  MODEL_CLASS = StepPredictor_GRU if "gru" in cfg.MODEL.CLASS.lower() else StepPredictor_Transformer
 
-  MODEL_CLASS = load_config(cfg_file)
-  MODEL_CLASS = StepPredictor_GRU if "gru" in MODEL_CLASS.MODEL.CLASS.lower() else StepPredictor_Transformer
+  print("|- Building", MODEL_CLASS.__name__, "with", head_name, "head classifier.")
 
-  return  MODEL_CLASS(cfg_file, fps).to("cuda")  
+  # checkpoint priority: function arg, variant config, model config, name of config
+  if checkpoint_path:
+      cfg.MODEL.OMNIGRU_CHECKPOINT_URL = checkpoint_path
+  if not cfg.MODEL.OMNIGRU_CHECKPOINT_URL:
+      # if no checkpoint is provided, assume the weight is named the same as the config file
+      cfg_name = cfg_file.split(os.sep).rsplit('.',1)[0]
+      cfg.MODEL.OMNIGRU_CHECKPOINT_URL = f'/home/user/models/{cfg_name}.pt'
+
+  return  MODEL_CLASS(cfg, fps).to("cuda")  
 
 @functools.lru_cache(1)
 def get_omnivore(cfg_fname):

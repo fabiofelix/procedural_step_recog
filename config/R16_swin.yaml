@@ -1,0 +1,4 @@
+_BASE_: R16.yaml
+MODEL:
+  CLASS: OmniTransformer_v3
+  OMNIGRU_CHECKPOINT_URL: /home/user/models/R16_swin.pt

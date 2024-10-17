@@ -1,0 +1,5 @@
+_BASE_: R19.yaml
+MODEL:
+  CLASS: OmniTransformer_v3
+  OMNIGRU_CHECKPOINT_URL: /home/user/models/R19_swin.pt
+

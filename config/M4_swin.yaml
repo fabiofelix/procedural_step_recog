@@ -1,0 +1,4 @@
+_BASE_: M4.yaml
+MODEL:
+  CLASS: OmniTransformer_v3
+  OMNIGRU_CHECKPOINT_URL: /home/user/models/M4_swin.pt
