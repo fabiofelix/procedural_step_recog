@@ -40,7 +40,10 @@ def build_model(cfg_file=None, fps=10, skill=None, variant=0, checkpoint_path=No
           checkpoint_path = checkpoint_path or var_cfg.get("CHECKPOINT")
 
   cfg = load_config(cfg_file)
+  head_name = cfg.MODEL.CLASS
   MODEL_CLASS = StepPredictor_GRU if "gru" in cfg.MODEL.CLASS.lower() else StepPredictor_Transformer
+
+  print("|- Building", MODEL_CLASS.__name__, "with", head_name, "head classifier.")
 
   # checkpoint priority: function arg, variant config, model config, name of config
   if checkpoint_path:

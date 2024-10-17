@@ -93,21 +93,21 @@ def my_train_test_split(cfg, videos):
     if "M1" in cfg.SKILLS[0]["NAME"]:    
       videos, video_test = train_test_split(videos, test_size=0.10, random_state=2343) #M1      
     elif "M2" in cfg.SKILLS[0]["NAME"]:
-      videos, video_test = train_test_split(videos, test_size=0.10, random_state=1007) #M2  2252: only with BBN 3_tourns_122023.zip    
+      videos, video_test = train_test_split(videos, test_size=0.10, random_state=2156) #M2  1007: only data until june demo  2252: only with BBN 3_tourns_122023.zip    
     elif "M3" in cfg.SKILLS[0]["NAME"]:
-      videos, video_test = train_test_split(videos, test_size=0.10, random_state=2359) #M3  1740: only with BBN pressure_videos.zip
+      videos, video_test = train_test_split(videos, test_size=0.10, random_state=2343) #M3 2359: only data until june demo  1740: only with BBN pressure_videos.zip
     elif "M5" in cfg.SKILLS[0]["NAME"]:
-      videos, video_test = train_test_split(videos, test_size=0.10, random_state=2359) #M5  1030: only with BBN 041624.zip
+      videos, video_test = train_test_split(videos, test_size=0.10, random_state=2351) #M5 2359: only data until june demo  1030: only with BBN 041624.zip
     elif "R18" in cfg.SKILLS[0]["NAME"]:      
-      videos, video_test = train_test_split(videos, test_size=0.10, random_state=2343) #R18 1740: only with BBN seal_videos.zip
-    elif "A8" in cfg.SKILLS[0]["NAME"]:
-      videos, video_test = train_test_split(videos, test_size=0.10, random_state=2317) #A8: 2329: only with data until 07/31/2024
-    elif "R19" in cfg.SKILLS[0]["NAME"]:
-      videos, video_test = train_test_split(videos, test_size=0.10, random_state=2321) #R19: 1030: only with data until 07/31/2024
+      videos, video_test = train_test_split(videos, test_size=0.10, random_state=2322) #R18 2343 only data until 07/31/2024 1740: only with BBN seal_videos.zip
+    elif "A8" in cfg.SKILLS[0]["NAME"]: 
+      videos, video_test = train_test_split(videos, test_size=0.10, random_state=2303) #A8: 2328 only data until 09/27/24; 2317: only data until 09/02/24; 2329: only with data until 07/31/2024; 1030: first test
+    elif "R19" in cfg.SKILLS[0]["NAME"]: 
+      videos, video_test = train_test_split(videos, test_size=0.10, random_state=2328) #R19: 2321: only data until 09/02/24; 1030: first test
     elif "R16" in cfg.SKILLS[0]["NAME"]:
-      videos, video_test = train_test_split(videos, test_size=0.10, random_state=2350) #R16: 1030: only with data until 07/31/2024
+      videos, video_test = train_test_split(videos, test_size=0.10, random_state=2315) #R16: 2350 only data until 09/02/24; 1030: first test
     elif "M4" in cfg.SKILLS[0]["NAME"]:
-      videos, video_test = train_test_split(videos, test_size=0.10, random_state=2348) #M4: 1030: only with data until 07/31/2024
+      videos, video_test = train_test_split(videos, test_size=0.10, random_state=2355) #M4: 2351: only data until 09/27/24; 2348: only data until 09/02/24; 1030: first test
     else:
       videos, video_test = train_test_split(videos, test_size=0.10, random_state=1030)
 

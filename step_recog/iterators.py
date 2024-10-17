@@ -11,6 +11,7 @@ from sklearn.metrics import confusion_matrix, classification_report, balanced_ac
 from matplotlib import pyplot as plt
 import seaborn as sb, pandas as pd
 import warnings
+import time
 import glob
 
 def build_model(cfg, load = False):
@@ -52,7 +53,7 @@ def build_optimizer(model, cfg):
   elif cfg.TRAIN.OPT == "sgd":
     optimizer = torch.optim.SGD(model.parameters(), lr=cfg.TRAIN.LR, momentum = cfg.TRAIN.MOMENTUM, weight_decay = cfg.TRAIN.WEIGHT_DECAY)
   elif cfg.TRAIN.OPT == "rmsprop":
-    optimizer = torch.optim.RMSprop(model.parameters(), lr=cfg.TRAIN.LR, weight_decay = cfg.TRAIN.WEIGHT_DECAY)
+    optimizer = torch.optim.RMSprop(model.parameters(), lr=cfg.TRAIN.LR, momentum = cfg.TRAIN.MOMENTUM, weight_decay = cfg.TRAIN.WEIGHT_DECAY)
 
   if cfg.TRAIN.SCHEDULER == "step":
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size = 5)
@@ -82,8 +83,15 @@ def train_step_GRU(model, criterion, criterion_t, optimizer, loader, is_training
   counter = 1.0
   label_expected = []
   label_predicted = []
+  step_time = []
+  extra_time = []
 
-  for counter, (action, obj, frame, audio, label, label_t, mask, frame_idx, video_id) in enumerate(loader, 1):
+  loader_iterator = iter(loader)
+
+  for counter in range(1, len(loader) + 1):
+    start_time = time.time()
+
+    action, obj, frame, audio, label, label_t, mask, _, _ = next(loader_iterator)
     label = nn.functional.one_hot(label, model.number_classes)
 
     if not is_training:
@@ -162,12 +170,16 @@ def train_step_GRU(model, criterion, criterion_t, optimizer, loader, is_training
                             "Total loss": sum_loss/counter, 
                             accuracy_desc: acc_avg})
 
+    step_time.append(time.time() - start_time)
+
+  start_time = time.time()
   grad_norm = np.sqrt(np.sum([torch.norm(p.grad).cpu().item()**2 for p in model.parameters() if p.grad is not None ]))
+  extra_time.append(time.time() - start_time)
 
   if is_training:
-    return sum_loss/counter, sum_class_loss/counter, sum_pos_loss/counter, sum_b_acc/counter, sum_acc/counter, grad_norm  
+    return sum_loss/counter, sum_class_loss/counter, sum_pos_loss/counter, sum_b_acc/counter, sum_acc/counter, grad_norm, step_time, extra_time
   else:
-    return sum_loss/counter, sum_class_loss/counter, sum_pos_loss/counter, sum_b_acc/counter, sum_acc/counter, grad_norm, np.array(label_expected), np.array(label_predicted) 
+    return sum_loss/counter, sum_class_loss/counter, sum_pos_loss/counter, sum_b_acc/counter, sum_acc/counter, grad_norm, np.array(label_expected), np.array(label_predicted), step_time, extra_time 
 
 def train_step_Transformer(model, criterion, optimizer, loader, is_training, cfg, progress, class_weight):
   if is_training:
@@ -181,12 +193,21 @@ def train_step_Transformer(model, criterion, optimizer, loader, is_training, cfg
   counter = 1.0
   label_expected = []
   label_predicted = []
+  step_time = []
+  extra_time = []
 
+  start_time = time.time()
   steps_feat = models_v2.prepare_txt(cfg.SKILLS[0]["STEPS"])
-  loader.dataset.transform = models_v2.prepare_img
+  loader.dataset.transform_aux = models_v2.prepare_img
   loader.dataset.reset()
+  extra_time.append(time.time() - start_time)
 
-  for counter, (window_frame, window_label, _, _) in enumerate(loader, 1):
+  loader_iterator = iter(loader)
+
+  for counter in range(1, len(loader) + 1):
+    start_time = time.time()
+
+    window_frame, window_label, _, _ = next(loader_iterator)
     window_label_oh = nn.functional.one_hot(window_label, model.number_classes).float()
 
     optimizer.zero_grad()
@@ -218,13 +239,17 @@ def train_step_Transformer(model, criterion, optimizer, loader, is_training, cfg
       acc_avg = (sum_b_acc if cfg.TRAIN.USE_CLASS_WEIGHT else sum_acc  )/counter
       progress.set_postfix({"Cross entropy": sum_loss/counter, 
                             accuracy_desc: acc_avg})
+      
+    step_time.append(time.time() - start_time)
 
+  start_time = time.time()
   grad_norm = np.sqrt(np.sum([torch.norm(p.grad).cpu().item()**2 for p in model.parameters() if p.grad is not None ]))
+  extra_time.append(time.time() - start_time)
 
   if is_training:
-    return sum_loss/counter, sum_loss/counter, 0, sum_b_acc/counter, sum_acc/counter, grad_norm  
+    return sum_loss/counter, sum_loss/counter, 0, sum_b_acc/counter, sum_acc/counter, grad_norm, step_time, extra_time   
   else:
-    return sum_loss/counter, sum_loss/counter, 0, sum_b_acc/counter, sum_acc/counter, grad_norm, np.array(label_expected), np.array(label_predicted)     
+    return sum_loss/counter, sum_loss/counter, 0, sum_b_acc/counter, sum_acc/counter, grad_norm, np.array(label_expected), np.array(label_predicted), step_time, extra_time
 
 
 def train_step(model, criterion, criterion_t, optimizer, loader, is_training, device, cfg, progress, class_weight):
@@ -237,7 +262,8 @@ def load_current_state(cfg, model, optimizer, scheduler=None):
   current_epoch = 0
   history = {"train_loss":[], "train_class_loss":[], "train_pos_loss": [], "train_acc":[], "train_b_acc":[], "train_grad_norm": [], 
              "val_loss":[], "val_class_loss":[], "val_pos_loss": [], "val_acc":[], "val_b_acc":[], "val_grad_norm": [], 
-             "best_epoch": None, "learning_rate": []}  
+             "best_epoch": None, "learning_rate": []}
+  time_log = {"loading_time": []}
   current_model = glob.glob(os.path.join(cfg.OUTPUT.LOCATION, 'current_model_epoch*.pt'))
   current_opt   = glob.glob(os.path.join(cfg.OUTPUT.LOCATION, 'current_optimizer_epoch*.pt'))
   current_sch   = glob.glob(os.path.join(cfg.OUTPUT.LOCATION, 'current_scheduler_epoch*.pt'))
@@ -263,14 +289,22 @@ def load_current_state(cfg, model, optimizer, scheduler=None):
     if scheduler is not None and len(current_sch) > 0:
       current_sch.sort()
       config = torch.load(current_sch[-1])
-      scheduler.load_state_dict(config)          
+      scheduler.load_state_dict(config) 
+
+    time_file = os.path.join(cfg.OUTPUT.LOCATION, "time.json")    
+
+    if os.path.isfile(time_file):
+      time_file = open(time_file, "r")
+      time_log  = json.load(time_file)               
 
   if not "learning_rate" in history:
     history["learning_rate"] = []
+  if not "loading_time" in time_log:
+    time_log["loading_time"] = []    
 
-  return model, optimizer, scheduler, current_epoch + 1, history
+  return model, optimizer, scheduler, current_epoch + 1, history, time_log
 
-def save_current_state(cfg, model, history, epoch, optimizer, scheduler=None): 
+def save_current_state(cfg, model, history, time_log, epoch, optimizer, scheduler=None): 
   name_pattern = os.path.join(cfg.OUTPUT.LOCATION, 'current_{}_epoch{:02d}.pt')  
   torch.save(model.state_dict(), name_pattern.format("model", epoch))
   torch.save(optimizer.state_dict(), name_pattern.format("optimizer", epoch))
@@ -280,6 +314,9 @@ def save_current_state(cfg, model, history, epoch, optimizer, scheduler=None):
 
   hist_file = open(os.path.join(cfg.OUTPUT.LOCATION, "history.json"), "w")
   hist_file.write(json.dumps(history))
+
+  time_file = open(os.path.join(cfg.OUTPUT.LOCATION, "time.json"), "w")
+  time_file.write(json.dumps(time_log))  
 
   previous_model = name_pattern.format("model", epoch - 1)
   previous_opt   = name_pattern.format("optimizer", epoch - 1)
@@ -332,6 +369,7 @@ def logging(model, optimizer, scheduler, cfg):
   print("{:24s}".format("|- Total params:"), "{:,}".format(total_params))
 
 def train(train_loader, val_loader, cfg):
+    start_time = time.time()
     best_model_path = os.path.join(cfg.OUTPUT.LOCATION, 'step_gru_best_model.pt')
     model, device = build_model(cfg)
     criterion, criterion_t, train_class_weight = build_losses(train_loader, cfg, device)
@@ -339,15 +377,17 @@ def train(train_loader, val_loader, cfg):
     optimizer, scheduler = build_optimizer(model, cfg)
     logging(model, optimizer, scheduler, cfg)
 
-    model, optimizer, scheduler, first_epoch, history = load_current_state(cfg, model, optimizer, scheduler)
+    model, optimizer, scheduler, first_epoch, history, time_log = load_current_state(cfg, model, optimizer, scheduler)
 
     best_val_loss = float('inf') if len(history["val_loss"]) == 0 else np.min(history["val_loss"])
     best_val_acc  = float('inf') if len(history["val_acc"]) == 0 else history["val_acc"][np.argmin(history["val_loss"])]
 
+    time_log["loading_time"].append(time.time() - start_time)
+
     for epoch in range(first_epoch, cfg.TRAIN.EPOCHS + 1):
       progress = tqdm.tqdm(total = len(train_loader), desc = "Epoch {}/{} ".format(epoch, cfg.TRAIN.EPOCHS), unit= "step", bar_format='{desc}|{bar:10}| {n_fmt}/{total_fmt} [{elapsed}<{remaining} - {rate_fmt}]{postfix}' )
       
-      train_loss, train_class_loss, train_pos_loss, train_b_acc, train_acc, grad_norm = train_step(model=model, criterion=criterion, criterion_t=criterion_t, optimizer=optimizer, loader=train_loader, is_training=True, device=device, cfg=cfg, progress=progress, class_weight=train_class_weight)
+      train_loss, train_class_loss, train_pos_loss, train_b_acc, train_acc, grad_norm, step_time_train, extra_time_train = train_step(model=model, criterion=criterion, criterion_t=criterion_t, optimizer=optimizer, loader=train_loader, is_training=True, device=device, cfg=cfg, progress=progress, class_weight=train_class_weight)
       history["train_loss"].append(train_loss)
       history["train_class_loss"].append(train_class_loss)
       history["train_pos_loss"].append(train_pos_loss)
@@ -356,7 +396,7 @@ def train(train_loader, val_loader, cfg):
       history["train_grad_norm"].append(grad_norm)
 
       with torch.no_grad():
-        val_loss, val_class_loss, val_pos_loss, val_b_acc, val_acc, grad_norm, val_targets, val_outputs = train_step(model=model, criterion=criterion, criterion_t=criterion_t, optimizer=optimizer, loader=val_loader, is_training=False, device=device, cfg=cfg, progress=progress, class_weight=val_class_weight)
+        val_loss, val_class_loss, val_pos_loss, val_b_acc, val_acc, grad_norm, val_targets, val_outputs, step_time_val, extra_time_val = train_step(model=model, criterion=criterion, criterion_t=criterion_t, optimizer=optimizer, loader=val_loader, is_training=False, device=device, cfg=cfg, progress=progress, class_weight=val_class_weight)
         
       history["val_loss"].append(val_loss)
       history["val_class_loss"].append(val_class_loss)
@@ -366,8 +406,12 @@ def train(train_loader, val_loader, cfg):
       history["val_grad_norm"].append(grad_norm)
 
       accuracy_desc = "{}acc".format("weighted " if cfg.TRAIN.USE_CLASS_WEIGHT else ""  )
-      progress.set_postfix({"Cross entropy": train_class_loss, "MSE": train_pos_loss, "Total loss": train_loss, accuracy_desc: (train_b_acc if cfg.TRAIN.USE_CLASS_WEIGHT else train_acc), 
-                            "val Cross entropy": val_class_loss, "val MSE": val_pos_loss, "val Total loss": val_loss, "val {}".format(accuracy_desc): (val_b_acc if cfg.TRAIN.USE_CLASS_WEIGHT else val_acc)})
+      if isinstance(model, models_v2.PTGPerceptionBases):
+        progress.set_postfix({"Cross entropy": train_class_loss, accuracy_desc: (train_b_acc if cfg.TRAIN.USE_CLASS_WEIGHT else train_acc), 
+                              "val Cross entropy": val_class_loss, "val {}".format(accuracy_desc): (val_b_acc if cfg.TRAIN.USE_CLASS_WEIGHT else val_acc)})
+      else:
+        progress.set_postfix({"Cross entropy": train_class_loss, "MSE": train_pos_loss, "Total loss": train_loss, accuracy_desc: (train_b_acc if cfg.TRAIN.USE_CLASS_WEIGHT else train_acc), 
+                              "val Cross entropy": val_class_loss, "val MSE": val_pos_loss, "val Total loss": val_loss, "val {}".format(accuracy_desc): (val_b_acc if cfg.TRAIN.USE_CLASS_WEIGHT else val_acc)})
       progress.close()
 
       if scheduler is not None:
@@ -388,7 +432,8 @@ def train(train_loader, val_loader, cfg):
         save_evaluation(val_targets, val_outputs, classes, cfg, label_order = classes_desc, class_weight = val_class_weight)
         cfg.OUTPUT.LOCATION = original_output        
 
-      save_current_state(cfg, model, history, epoch, optimizer, scheduler) 
+      time_log["epoch{}".format(epoch)] = {"step_time_train": step_time_train, "step_time_val": step_time_val}
+      save_current_state(cfg, model, history, time_log, epoch, optimizer, scheduler) 
 
     plot_history(history, cfg)        
 
@@ -456,7 +501,7 @@ def evaluate_Transformer(model, data_loader, cfg):
   _, _, class_weight =  build_losses(data_loader, cfg, device)
 
   steps_feat = models_v2.prepare_txt(cfg.SKILLS[0]["STEPS"]).cpu().detach()
-  data_loader.dataset.transform = models_v2.prepare_img  
+  data_loader.dataset.transform_aux = models_v2.prepare_img  
   data_loader.dataset.reset()
 
   video_evaluation = {}
@@ -764,7 +809,7 @@ def save_evaluation(expected, predicted, classes, cfg, label_order = None, norma
     ax.set_title('Predicted', fontsize = 16)  
     sb.heatmap(df, ax = ax, cmap = "Blues", annot = True, fmt = '.2f', annot_kws=None if df.shape[0] < 20 else {"size": 6}, vmin = 0.0, vmax = 1.0)# font size  linewidths
     figure.tight_layout()
-    figure.savefig(os.path.join(cfg.OUTPUT.LOCATION, file_name))    
+    figure.savefig(os.path.join(cfg.OUTPUT.LOCATION, file_name)) 
   finally:
     plt.close()
     sb.reset_orig()
