@@ -146,6 +146,14 @@ class Perception:
                 finally:
                     queue.task_done()
         print("writer done")
+
+
+def dump_data_dict(data, timestamp):
+    data = {k: v for k, v in data.items() if v is not None}
+    stream_ids = list(data)
+    json_data = [jsondump(x) for x in data.values()]
+    timestamps = [noconflict_ts(timestamp)]*len(data)
+    return stream_ids, json_data, timestamps
     
 async def ws_write_data_dict(ws_push, data, timestamp):
     data = {k: v for k, v in data.items() if v is not None}
