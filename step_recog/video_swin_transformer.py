@@ -1,4 +1,6 @@
-## https://github.com/pytorch/vision/blob/main/torchvision/models/video/swin_transformer.py
+## https://github.com/pytorch/vision/blob/release/0.17/torchvision/models/video/swin_transformer.py
+## torch                     2.2.2
+## torchvision               0.17.2
 
 import copy
 import torch
@@ -30,7 +32,8 @@ def shifted_window_attention_3d_crossattention(
     Window based multi-head self attention (W-MSA) module with relative position bias.
     It supports both of shifted and non-shifted window.
     Args:
-        input (Tensor[B, T, H, W, C]): The input tensor, 5-dimensions.
+        input1 (Tensor[B, T, H, W, C]): The input tensor, 5-dimensions, used to multiply kv.
+        input2 (Tensor[B, T, H, W, C]): The input tensor, 5-dimensions, used to multiply q.
         kv_weight (Tensor[in_dim, out_dim]): The weight tensor of key, value.
         q_weight (Tensor[in_dim, out_dim]): The weight tensor of query.        
         proj_weight (Tensor[out_dim, out_dim]): The weight tensor of projection.
@@ -145,21 +148,19 @@ def shifted_window_attention_3d_crossattention(
     return x
 
 class ShiftedWindowAttention3d_CrossAttention(ShiftedWindowAttention3d):
-  def __init__(self, *args, **kwargs):
-    super().__init__(*args, **kwargs)
+  def copy_self2cross(self, qkv = None):
+    qkv     = self.qkv if qkv is None else qkv
+    self.q  = nn.Linear(in_features=qkv.in_features, out_features=qkv.in_features, bias=qkv.bias is not None) 
+    self.kv = nn.Linear(in_features=qkv.in_features, out_features=qkv.in_features * 2, bias=qkv.bias is not None) 
 
-    self.q  = nn.Linear(in_features=self.qkv.in_features, out_features=self.qkv.in_features, bias=self.qkv.bias is not None) 
-    self.kv = nn.Linear(in_features=self.qkv.in_features, out_features=self.qkv.in_features * 2, bias=self.qkv.bias is not None) 
+    qkv.weight.requires_grad = qkv.bias.requires_grad = False
 
-    self.qkv.weight.requires_grad = False
-    self.qkv.bias.requires_grad = False
-
-    self.q.weight = nn.parameter.Parameter(copy.deepcopy(self.qkv.weight[:self.qkv.in_features, :]))
-    self.q.bias   = None if self.q.bias is None else nn.parameter.Parameter(copy.deepcopy(self.qkv.bias[:self.qkv.in_features]))
+    self.q.weight = nn.parameter.Parameter(copy.deepcopy(qkv.weight[:qkv.in_features, :]))
+    self.q.bias   = None if self.q.bias is None else nn.parameter.Parameter(copy.deepcopy(qkv.bias[:qkv.in_features]))
     self.q.weight.requires_grad = self.q.bias.requires_grad = True
 
-    self.kv.weight = nn.parameter.Parameter(copy.deepcopy(self.qkv.weight[self.qkv.in_features:, :]))
-    self.kv.bias   = None if self.kv.bias is None else nn.parameter.Parameter(copy.deepcopy(self.qkv.bias[self.qkv.in_features:]))
+    self.kv.weight = nn.parameter.Parameter(copy.deepcopy(qkv.weight[qkv.in_features:, :]))
+    self.kv.bias   = None if self.kv.bias is None else nn.parameter.Parameter(copy.deepcopy(qkv.bias[qkv.in_features:]))
     self.kv.weight.requires_grad = self.qkv.bias.requires_grad = True
 
     del self.qkv

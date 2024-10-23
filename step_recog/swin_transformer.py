@@ -1,4 +1,6 @@
-## https://github.com/pytorch/vision/blob/main/torchvision/models/swin_transformer.py
+## https://github.com/pytorch/vision/blob/release/0.17/torchvision/models/swin_transformer.py
+## torch                     2.2.2
+## torchvision               0.17.2
 
 import copy
 from torch import Tensor

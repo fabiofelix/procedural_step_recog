@@ -5,7 +5,10 @@ import torchvision
 import clip
 import math
 import ipdb
+import copy
 from step_recog import utils
+import os
+from enum import IntEnum
 from collections import OrderedDict
 
 class _TextEncoder(nn.Module):
@@ -62,7 +65,7 @@ class PTGPerceptionBases(nn.Module):
       nn.init.trunc_normal_(layer.weight, std=0.02)
 
       if layer.bias is not None:
-        nn.init.zeros_(layer.bias)      
+        nn.init.zeros_(layer.bias)   
 
   def update_version(self, state_dict):
     new_dict = OrderedDict()
@@ -118,6 +121,11 @@ class OmniTransformer_v3(PTGPerceptionBases):
   def forward(self, img, text = None):
     return self.image_branch(img)
 
+class CombinationType(IntEnum):
+  CONCAT  = 0       
+  ATTN    = 1
+  CONCEPT = 2  
+
 ##Concat text features with image tokens
 class OmniTransformer_v4(PTGPerceptionBases):
   def __init__(self, cfg, load = False, *args, **kwargs):
@@ -125,16 +133,36 @@ class OmniTransformer_v4(PTGPerceptionBases):
 
     self.number_classes = cfg.MODEL.OUTPUT_DIM + 1 #adding no step
     self.image_branch = torchvision.models.video.swin3d_t(weights = Swin3D_T_Weights.KINETICS400_V1)  #params = 28,158,070
+    self.comb_type = CombinationType.CONCAT
+    clip_embedding = 512
+    hidden_state = 512
 
-    self.proj_X = torch.nn.Linear(self.image_branch.patch_embed.norm.normalized_shape[0], 512)  #project image tokens into a 512-D space, equal to CLIP
-    self.proj_Z = torch.nn.Linear(512, 512)  #project CLIP space
-    self.proj_XZ = torch.nn.Linear(1024, self.image_branch.patch_embed.norm.normalized_shape[0]) #project concatenation of image and text into the original patch_embed space 
-    self.proj_gelu = torch.nn.GELU()
-    self.norm = torch.nn.LayerNorm(self.image_branch.patch_embed.norm.normalized_shape, eps=self.image_branch.patch_embed.norm.eps)
+    self.proj_X = nn.Sequential(
+             nn.LayerNorm(self.image_branch.patch_embed.norm.normalized_shape, eps=self.image_branch.patch_embed.norm.eps),
+             nn.Linear(self.image_branch.patch_embed.norm.normalized_shape[0], hidden_state),
+             nn.GELU(),
+             nn.Dropout(self.image_branch.pos_drop.p)
+            )
+    self.proj_Z = nn.Sequential(
+              nn.LayerNorm(clip_embedding, eps=self.image_branch.patch_embed.norm.eps),
+              nn.Linear(clip_embedding, hidden_state),
+              nn.GELU(),
+              nn.Dropout(self.image_branch.pos_drop.p)
+            )    
+    proj_XZ_input_shape = 2 * hidden_state if self.comb_type == CombinationType.CONCAT else hidden_state
+    self.proj_XZ = nn.Sequential(
+              nn.LayerNorm(proj_XZ_input_shape, eps=self.image_branch.patch_embed.norm.eps),
+              nn.Linear(proj_XZ_input_shape, self.image_branch.patch_embed.norm.normalized_shape[0]),
+              nn.GELU(),
+              nn.Dropout(self.image_branch.pos_drop.p)
+            )    
 
-    self._init_layer(self.proj_X)
-    self._init_layer(self.proj_Z)
-    self._init_layer(self.proj_XZ)
+    for layer in self.proj_X:
+      self._init_layer(layer)
+    for layer in self.proj_Z:
+      self._init_layer(layer)
+    for layer in self.proj_XZ:
+      self._init_layer(layer)
 
     self.__prepare_branches()
 
@@ -156,15 +184,21 @@ class OmniTransformer_v4(PTGPerceptionBases):
     Z = Z.permute(3, 0, 1, 2, 4)
     #2. Repate text features for each image token and project them (B, 1, 1, 1, F) => (B, _T, _H, _W, F)
     Z = Z.repeat(1, X.shape[1], X.shape[2], X.shape[3], 1)
-    Z = self.proj_gelu(self.proj_Z(Z))
+    Z_proj = self.proj_Z(Z)
     #3. Project image tokens to have the text feature shape
-    X_proj = self.proj_gelu(self.proj_X(X))
-    #4. Concatenate
-    XZ = torch.concat((X_proj, Z), -1)
-    #5. Project the concatenation to a space with the original feature shape
-    X = self.proj_gelu(self.proj_XZ(XZ))
-    #6. Normalize the features again (equal to image_branch.patch_embed)
-    X = self.norm(X)
+    X_proj = self.proj_X(X)
+    #4. Combining image and text
+    if self.comb_type == CombinationType.CONCAT: 
+      XZ = torch.concat((X_proj, Z_proj), -1)
+    elif self.comb_type == CombinationType.ATTN: 
+      XZ = torch.nn.functional.scaled_dot_product_attention(Z_proj, X_proj, X_proj, dropout_p=0.0)
+    elif self.comb_type == CombinationType.CONCEPT:       
+      theta = torch.nn.functional.cosine_similarity(X_proj, Z_proj, dim = -1)
+      w     = torch.softmax(theta, dim = -1)
+      w     = w[:, :, :, :, None]
+      XZ    = w * X_proj + (1 - w) * Z_proj
+    #5. Project the concatenation to a space with the original feature shape and do a skip-connection (only way to force the training process to converge)
+    X = X + self.proj_XZ(XZ)
 
     ##Equal to SwinTransformer3d.forward()
     X = self.image_branch.pos_drop(X)
@@ -190,14 +224,14 @@ class OmniTransformer_v5(PTGPerceptionBases):
 
     for feat in self.image_branch.features:
       if isinstance(feat, torch.nn.Sequential):
-        self.proj_Z.append(torch.nn.Linear(512, feat[0].attn.kv.in_features))
+        clip_proj = torch.nn.Linear(512, feat[0].attn.kv.in_features) #project CLIP space
+        self._init_layer(clip_proj)
+        self.proj_Z.append(clip_proj)
       else:
         self.proj_Z.append(None)  
 
     self.proj_Z = nn.Sequential(*self.proj_Z)
     self.proj_gelu = torch.nn.GELU()
-
-    self._init_layer(self.proj_Z)
 
     if load:
       self.load_state_dict( self.update_version(torch.load( cfg.MODEL.OMNIGRU_CHECKPOINT_URL )))    
@@ -210,7 +244,7 @@ class OmniTransformer_v5(PTGPerceptionBases):
       if isinstance(feat, torch.nn.Sequential):
         for block in feat:
           block.add_norm()
-          block.attn = ShiftedWindowAttention3d_CrossAttention(
+          new_attn = ShiftedWindowAttention3d_CrossAttention(
                           block.attn.qkv.in_features, 
                           block.attn.window_size, 
                           block.attn.shift_size, 
@@ -218,6 +252,8 @@ class OmniTransformer_v5(PTGPerceptionBases):
                           attention_dropout=block.attn.attention_dropout, 
                           dropout=block.attn.attention_dropout 
                       )
+          new_attn.copy_self2cross(block.attn.qkv)
+          block.attn = new_attn
 
     ##Configure IMAGE head
     self.image_branch.head = nn.Linear(in_features=self.image_branch.head.in_features, out_features=self.number_classes, bias=self.image_branch.head.bias is not None)    
@@ -230,22 +266,26 @@ class OmniTransformer_v5(PTGPerceptionBases):
 
     ##Combination of image tokens and text features
     #1. Interpolate text features to match img batch (S, 1, 1, 1, F) => (B, 1, 1, 1, F)
-    Z = text.permute(1, 2, 3, 0, 4) 
-    Z = torch.nn.functional.interpolate(input = Z, size = (Z.shape[-3], X.shape[0], Z.shape[-1]), mode = "nearest")
+    Z = torch.nn.functional.interpolate(input = text[None, None, None, ...], size = (1, X.shape[0], text.shape[1]), mode = "nearest")
     Z = Z.permute(3, 0, 1, 2, 4)
     #2. Repate text features for each image token and project them (B, 1, 1, 1, F) => (B, _T, _H, _W, F)
-    Z = Z.repeat(1, X.shape[1], X.shape[2], X.shape[3], 1)
+    Z_repeat = Z.repeat(1, X.shape[1], X.shape[2], X.shape[3], 1)
+
+#    ipdb.set_trace()
     
     for image_feat, z_proj in zip(self.image_branch.features, self.proj_Z):
       if isinstance(image_feat, torch.nn.Sequential):
         for image_block in image_feat:
-          Z = self.proj_gelu(z_proj(Z))
-          X = image_block(Z, X)
-      else:
+          Z_aux = self.proj_gelu(z_proj(Z_repeat))
+          X = image_block(X, Z_aux)
+      else: #PatchMerging
         X = image_feat(X)
+        #2. Repate text features for each image token and project them (B, 1, 1, 1, F) => (B, _T, _H, _W, F)
+        Z_repeat = Z.repeat(1, X.shape[1], X.shape[2], X.shape[3], 1)        
+
+#    ipdb.set_trace()
 
     ##Equal to SwinTransformer3d.forward()
-    X = self.image_branch.features(X)
     X = self.image_branch.norm(X)
     X = X.permute(0, 4, 1, 2, 3)
     X = self.image_branch.avgpool(X)
