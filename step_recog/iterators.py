@@ -834,6 +834,24 @@ def save_video_evaluation(video_id, window_last_frame, expected, probs, cfg, nr_
   precision = precision_score(expected, predicted, average=None)
   recall    = recall_score(expected, predicted, average=None)
 
+#========================================================================================================================================#    
+
+  classes = [ i for i in range(nr_classes)]
+  label_order = [ "Step " + str(i + 1)  for i in range(nr_classes)]
+  label_order[-1] = "No step"
+  
+  file = open(os.path.join(output_location, "{}-metrics.txt".format(video_id)), "w")
+
+  try:
+    file.write(classification_report(expected, predicted, zero_division = 0, labels = classes, target_names = label_order)) 
+    file.write("\n\n")     
+    file.write("Categorical accuracy: {:.2f}\n".format(accuracy_score(expected, predicted)))
+    file.write("Weighted accuracy: {:.2f}\n".format(weighted_accuracy(expected, predicted, class_weight)))    
+  finally:
+    file.close() 
+
+#========================================================================================================================================#    
+
   ##Let No Step before the other steps
   expected[expected == nr_classes - 1] = -1
   predicted[predicted == nr_classes - 1] = -1
@@ -872,6 +890,8 @@ def save_video_evaluation(video_id, window_last_frame, expected, probs, cfg, nr_
     figure.savefig(os.path.join(output_location, "{}-step_variation.png".format(video_id)))
   finally:
     plt.close()
+
+#========================================================================================================================================#    
 
 def weighted_accuracy(y_true, y_pred, class_weight):
   sample_weight = np.zeros(y_true.shape)
