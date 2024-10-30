@@ -1,4 +1,4 @@
 _BASE_: R18.yaml
 MODEL:
-  CLASS: OmniTransformer_v3
+  CLASS: OmniTransformer_v4
   OMNIGRU_CHECKPOINT_URL: /home/user/models/R18_swin.pt
