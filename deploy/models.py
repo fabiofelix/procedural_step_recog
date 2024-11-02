@@ -5,6 +5,7 @@ import ray
 import cv2
 import numpy as np
 import torch
+import time
 from step_recog.full.model import build_model, StepPredictor
 from step_recog.full.statemachine import ProcedureStateMachine
 
@@ -87,7 +88,7 @@ class AllInOneModel:
 
     @torch.no_grad()
     def queue_frames(self, ims_rgb):
-        sm_ims_rgb = [cv2.resize(im, (224, 224)) for im in ims_rgb]
+        sm_ims_rgb = [ self.model.prepare(im) for im in ims_rgb]
         for im in sm_ims_rgb:
             self.model.queue_frame(im)
 
@@ -95,7 +96,7 @@ class AllInOneModel:
     def forward(self, ims_rgb):
         if self.model_disabled:
             return None, None, None
-        sm_ims_rgb = [cv2.resize(im, (224, 224)) for im in ims_rgb]
+        sm_ims_rgb = [ self.model.prepare(im) for im in ims_rgb]
         for im in sm_ims_rgb[:-1]:
             self.model.queue_frame(im)
         if self.yolo_disabled:
@@ -109,6 +110,10 @@ class AllInOneModel:
         except Exception as e:
             print("\nerror state update", preds, self.sm.current_state, type(e).__name__, e)
         state = self.sm.current_state
+
+        ##TODO: For some unknown reason, predictions stabilize when some delay is added to the process
+        time.sleep(0.5)
+
         return preds, objects, state
 
     @torch.no_grad()
