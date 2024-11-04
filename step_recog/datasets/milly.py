@@ -562,7 +562,7 @@ class Milly_multifeature_v4(Milly_multifeature):
     return new_frames
 
   ##Apply the same augmentation to all windows in a video_id  
-  def augment_frames(self, frames, frame_ids, video_id):
+  def augment_frames(self, frames, frame_ids, video_id, force = False):
     if self.image_augs:
       if video_id in self.augment_configs:
         if self.augment_configs[video_id] is not None:
@@ -572,7 +572,7 @@ class Milly_multifeature_v4(Milly_multifeature):
       else:  
         self.augment_configs[video_id] = None
 
-        if self.rng.choice([True, False], p = [self.cfg.DATASET.IMAGE_AUGMENTATION_PERCENTAGE, 1.0 - self.cfg.DATASET.IMAGE_AUGMENTATION_PERCENTAGE]):
+        if force or self.rng.choice([True, False], p = [self.cfg.DATASET.IMAGE_AUGMENTATION_PERCENTAGE, 1.0 - self.cfg.DATASET.IMAGE_AUGMENTATION_PERCENTAGE]):
           aug = get_augmentation(None, verbose = False)
           self.augment_configs[video_id] = aug
 

@@ -115,8 +115,11 @@ def train_step_GRU(model, criterion, criterion_t, optimizer, loader, is_training
 ##   https://pytorch.org/docs/stable/generated/torch.nn.CrossEntropyLoss.html
 ##   https://discuss.pytorch.org/t/rnn-many-to-many-classification-with-cross-entropy-loss/106197
     class_loss = criterion(out_masked.transpose(1, 2), label_masked.transpose(1, 2))
-    pos_loss   = criterion_t(out_t.float() * mask, mask * label_t.float())
-    loss       = class_loss + pos_loss
+    loss = class_loss
+
+    if cfg.TRAIN.ADD_POSITIONAL_LOSS:
+      pos_loss = criterion_t(out_t.float() * mask, mask * label_t.float())
+      loss     = class_loss + pos_loss
 
     if is_training:
       loss.backward()
@@ -131,14 +134,15 @@ def train_step_GRU(model, criterion, criterion_t, optimizer, loader, is_training
     out_masked   = out_masked.cpu()
     label_masked = label_masked.cpu()
     class_loss   = class_loss.detach().cpu()
-    pos_loss     = pos_loss.detach().cpu()
+    pos_loss     = pos_loss.detach().cpu() if cfg.TRAIN.ADD_POSITIONAL_LOSS else 0 
     loss         = loss.detach().cpu()
     torch.cuda.empty_cache()
 
     sum_class_loss += class_loss.item()
-    sum_pos_loss   += pos_loss.item()
+    sum_pos_loss   += pos_loss.item() if cfg.TRAIN.ADD_POSITIONAL_LOSS else 0 
     sum_loss       += loss.item()
 
+    #================================================================================================#
     out_masked   = torch.argmax(torch.softmax(out_masked, dim = -1), axis = -1)
     label_masked = torch.argmax(label_masked, axis = -1)
 
@@ -160,6 +164,7 @@ def train_step_GRU(model, criterion, criterion_t, optimizer, loader, is_training
     out_masked_aux = np.array(out_masked_aux)
     sum_acc   += accuracy_score(label_masked_aux, out_masked_aux)      
     sum_b_acc += weighted_accuracy(label_masked_aux, out_masked_aux, class_weight)    
+    #================================================================================================#      
 
     if is_training:
       progress.update(1)
@@ -444,6 +449,9 @@ def train(train_loader, val_loader, cfg):
 
 @torch.no_grad()
 def evaluate(model, data_loader, cfg):
+  if not os.path.isdir(cfg.OUTPUT.LOCATION):
+    os.makedirs(cfg.OUTPUT.LOCATION)
+
   if isinstance(model, models_v2.PTGPerceptionBases):
     evaluate_Transformer(model, data_loader, cfg)
   else: 
@@ -822,6 +830,8 @@ def save_video_evaluation(video_id, window_last_frame, expected, probs, cfg, nr_
 
   expected = np.array(expected)
   predicted = np.argmax(probs, axis = 1) 
+
+#========================================================================================================================================#
 
   accuracy  = accuracy_score(expected, predicted)
   acc_desc  = "acc"
