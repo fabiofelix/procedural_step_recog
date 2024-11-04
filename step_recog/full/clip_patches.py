@@ -69,20 +69,19 @@ def extract_image_patch(image, bbox, patch_shape=None):
     bbox[:2] = np.maximum(0, bbox[:2])
     bbox[2:] = np.minimum(np.asarray(image.shape[:2][::-1]) - 1, bbox[2:])
     if np.any(bbox[:2] >= bbox[2:]):
-        return None
-
+      return None, bbox
     # 
     sx, sy, ex, ey = bbox
     image = image[sy:ey, sx:ex]
-    return image
+    return image, bbox
 
 
 def extract_patches(image, boxes, patch_shape=None):
     patches = []
-    for box in boxes:
-        patch = extract_image_patch(image, box, patch_shape=patch_shape)
-        if patch is None:
-            print(f"WARNING: Failed to extract image patch: {box}.")
-            patch = np.random.randint(0, 255, (*patch_shape, 3) if patch_shape else image.shape, dtype=np.uint8)
-        patches.append(patch)
+    for box in boxes:        
+      patch, bbox = extract_image_patch(image, box, patch_shape=patch_shape)
+      if patch is None:
+        print(f"WARNING: Failed to extract image patch: {box} => {bbox}.")
+        patch = np.random.randint(0, 255, (*patch_shape, 3) if patch_shape else image.shape, dtype=np.uint8)
+      patches.append(patch)
     return patches
