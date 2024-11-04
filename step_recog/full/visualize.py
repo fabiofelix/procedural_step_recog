@@ -35,7 +35,8 @@ def main(video_path, output_path='output.mp4', cfg_file=""):
     with sv.VideoSink(output_path, video_info=video_info) as sink:
         # iterate over video frames
         for idx, frame in tqdm.tqdm(enumerate(sv.get_video_frames_generator(video_path))):
-            frame_aux = model.prepare(frame)
+            frame_aux = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            frame_aux = model.prepare(frame_aux)
             model.queue_frame(frame_aux)  
 
             if idx % step_process == 0:

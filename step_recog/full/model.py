@@ -241,6 +241,9 @@ class StepPredictor_Transformer(StepPredictor):
         self.create_queue(video_fps * 2) #default: 2seconds 
 
     def forward(self, image, queue_frame = True):
+       if queue_frame:
+         self.queue_frame(image)
+
        image = torch.from_numpy(np.array(self.input_queue))
        image = models_v2.prepare_img(image, input_channels_last=True)
 
