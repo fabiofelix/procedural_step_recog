@@ -62,12 +62,16 @@ def extract_image_patch(image, bbox, patch_shape=None):
         bbox[2] = new_width
 
     # convert to top left, bottom right
+    # (x1, y1, w, h) => (x1, y1, x1 + w, y1 + h) => (x1, y1, x2, y2)
     bbox[2:] += bbox[:2]
     bbox = bbox.astype(int)
 
     # clip at image boundaries
+    # (x1, y1) >= (0, 0)
     bbox[:2] = np.maximum(0, bbox[:2])
+    # (x2, y2) < image.shape
     bbox[2:] = np.minimum(np.asarray(image.shape[:2][::-1]) - 1, bbox[2:])
+    # x2 > x1 and y2 > y1
     if np.any(bbox[:2] >= bbox[2:]):
       return None, bbox
     # 

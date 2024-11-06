@@ -93,15 +93,15 @@ def my_train_test_split(cfg, videos):
     if "M1" in cfg.SKILLS[0]["NAME"]:    
       videos, video_test = train_test_split(videos, test_size=0.10, random_state=2343) #M1      
     elif "M2" in cfg.SKILLS[0]["NAME"]:
-      videos, video_test = train_test_split(videos, test_size=0.10, random_state=2156) #M2  1007: only data until june demo  2252: only with BBN 3_tourns_122023.zip    
+      videos, video_test = train_test_split(videos, test_size=0.10, random_state=2308) #M2  2156: only with data until 07/09/2024;  1007: only data until june demo  2252: only with BBN 3_tourns_122023.zip 
     elif "M3" in cfg.SKILLS[0]["NAME"]:
       videos, video_test = train_test_split(videos, test_size=0.10, random_state=2343) #M3 2359: only data until june demo  1740: only with BBN pressure_videos.zip
     elif "M5" in cfg.SKILLS[0]["NAME"]:
       videos, video_test = train_test_split(videos, test_size=0.10, random_state=2351) #M5 2359: only data until june demo  1030: only with BBN 041624.zip
     elif "R18" in cfg.SKILLS[0]["NAME"]:      
-      videos, video_test = train_test_split(videos, test_size=0.10, random_state=2322) #R18 2343 only data until 07/31/2024 1740: only with BBN seal_videos.zip
+      videos, video_test = train_test_split(videos, test_size=0.10, random_state=2356) #R18 2322: only data until 07/09/2024; 2343 only data until 07/31/2024 1740: only with BBN seal_videos.zip
     elif "A8" in cfg.SKILLS[0]["NAME"]: 
-      videos, video_test = train_test_split(videos, test_size=0.10, random_state=2303) #A8: 2328 only data until 09/27/24; 2317: only data until 09/02/24; 2329: only with data until 07/31/2024; 1030: first test
+      videos, video_test = train_test_split(videos, test_size=0.10, random_state=2250) #A8: 2303: only ata until 10/11/2024; 2328 only data until 09/27/24; 2317: only data until 09/02/24; 2329: only with data until 07/31/2024; 1030: first test
     elif "R19" in cfg.SKILLS[0]["NAME"]: 
       videos, video_test = train_test_split(videos, test_size=0.10, random_state=2328) #R19: 2321: only data until 09/02/24; 1030: first test
     elif "R16" in cfg.SKILLS[0]["NAME"]:
@@ -119,7 +119,7 @@ def train_kfold(cfg, args, k = 10):
   data   = pd.read_csv(cfg.DATASET.TR_ANNOTATIONS_FILE)
   videos = data.video_id.unique()
   main_path = cfg.OUTPUT.LOCATION
-  videos, video_test = my_train_test_split(cfg, videos)      
+  videos, video_test = my_train_test_split(cfg, videos)     
 
   for idx, (train_idx, val_idx) in enumerate(kf_train_val.split(videos), 1):    
     if args.forced_iteration is None or idx == args.forced_iteration:
