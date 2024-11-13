@@ -46,7 +46,7 @@ class AllInOneModel:
             for mt in self.model_type:
                 try:
                     print("Trying to load:", skill, mt)
-                    self.MODEL_CACHE[skill] = build_model(skill=skill.upper(), variant=mt, fps=10).to(self.device)
+                    self.MODEL_CACHE[skill] = build_model(skill=skill.upper(), variant=mt, fps=15).to(self.device)
                     self.model_disabled = False
                     print("Success")
                     break
