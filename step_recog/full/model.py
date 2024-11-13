@@ -107,7 +107,6 @@ class StepPredictor_GRU(StepPredictor):
         super().__init__(cfg_file, video_fps)
 #        self.omni_cfg = act_load_config(self.cfg.MODEL.OMNIVORE_CONFIG)
 
-        self.MAX_OBJECTS = 25
 #        self.transform = transforms.Compose([
 #          transforms.Resize(self.omni_cfg.MODEL.IN_SIZE),
 #          transforms.CenterCrop(self.omni_cfg.MODEL.IN_SIZE)
@@ -176,6 +175,7 @@ class StepPredictor_GRU(StepPredictor):
         # compute yolo
         Z_objects, Z_frame = torch.zeros((1, 1, 25, 0)).float(), torch.zeros((1, 1, 1, 0)).float()
         if self.cfg.MODEL.USE_OBJECTS:
+            max_yolo_objects = len(self.yolo.names)
             results = self.yolo(image, verbose=False)
             boxes = results[0].boxes
             Z_clip = self.clip_patches(image, boxes.xywh.cpu().numpy(), include_frame=True)
@@ -184,8 +184,8 @@ class StepPredictor_GRU(StepPredictor):
             Z_frame = torch.cat([Z_clip[:1], torch.tensor([[0, 0, 1, 1, 1]]).to(self._device.device)], dim=1)
             Z_objects = torch.cat([Z_clip[1:], boxes.xyxyn, boxes.conf[:, None]], dim=1)  ##deticn_bbn.py:Extractor.compute_store_clip_boxes returns xyxyn
             # pad boxes to size
-            _pad = torch.zeros((max(self.MAX_OBJECTS - Z_objects.shape[0], 0), Z_objects.shape[1])).to(self._device.device)
-            Z_objects = torch.cat([Z_objects, _pad])[:self.MAX_OBJECTS]
+            _pad = torch.zeros((max(max_yolo_objects - Z_objects.shape[0], 0), Z_objects.shape[1])).to(self._device.device)
+            Z_objects = torch.cat([Z_objects, _pad])[:max_yolo_objects]
             Z_frame = Z_frame[None,None].detach().cpu().float()
             Z_objects = Z_objects[None,None].detach().cpu().float()
 
