@@ -27,6 +27,7 @@ _C.TRAIN.RETURN_METRICS = False
 _C.TRAIN.USE_CROSS_VALIDATION = True
 _C.TRAIN.SPLIT_10P_TEST = False
 _C.TRAIN.USE_CLASS_WEIGHT = True
+_C.TRAIN.ADD_POSITIONAL_LOSS = True
 
 # -----------------------------------------------------------------------------
 # EVAL options

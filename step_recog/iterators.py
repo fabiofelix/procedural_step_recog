@@ -115,8 +115,11 @@ def train_step_GRU(model, criterion, criterion_t, optimizer, loader, is_training
 ##   https://pytorch.org/docs/stable/generated/torch.nn.CrossEntropyLoss.html
 ##   https://discuss.pytorch.org/t/rnn-many-to-many-classification-with-cross-entropy-loss/106197
     class_loss = criterion(out_masked.transpose(1, 2), label_masked.transpose(1, 2))
-    pos_loss   = criterion_t(out_t.float() * mask, mask * label_t.float())
-    loss       = class_loss + pos_loss
+    loss = class_loss
+
+    if cfg.TRAIN.ADD_POSITIONAL_LOSS:
+      pos_loss = criterion_t(out_t.float() * mask, mask * label_t.float())
+      loss     = class_loss + pos_loss
 
     if is_training:
       loss.backward()
@@ -131,14 +134,15 @@ def train_step_GRU(model, criterion, criterion_t, optimizer, loader, is_training
     out_masked   = out_masked.cpu()
     label_masked = label_masked.cpu()
     class_loss   = class_loss.detach().cpu()
-    pos_loss     = pos_loss.detach().cpu()
+    pos_loss     = pos_loss.detach().cpu() if cfg.TRAIN.ADD_POSITIONAL_LOSS else 0 
     loss         = loss.detach().cpu()
     torch.cuda.empty_cache()
 
     sum_class_loss += class_loss.item()
-    sum_pos_loss   += pos_loss.item()
+    sum_pos_loss   += pos_loss.item() if cfg.TRAIN.ADD_POSITIONAL_LOSS else 0 
     sum_loss       += loss.item()
 
+    #================================================================================================#
     out_masked   = torch.argmax(torch.softmax(out_masked, dim = -1), axis = -1)
     label_masked = torch.argmax(label_masked, axis = -1)
 
@@ -160,6 +164,7 @@ def train_step_GRU(model, criterion, criterion_t, optimizer, loader, is_training
     out_masked_aux = np.array(out_masked_aux)
     sum_acc   += accuracy_score(label_masked_aux, out_masked_aux)      
     sum_b_acc += weighted_accuracy(label_masked_aux, out_masked_aux, class_weight)    
+    #================================================================================================#      
 
     if is_training:
       progress.update(1)
@@ -444,6 +449,9 @@ def train(train_loader, val_loader, cfg):
 
 @torch.no_grad()
 def evaluate(model, data_loader, cfg):
+  if not os.path.isdir(cfg.OUTPUT.LOCATION):
+    os.makedirs(cfg.OUTPUT.LOCATION)
+
   if isinstance(model, models_v2.PTGPerceptionBases):
     evaluate_Transformer(model, data_loader, cfg)
   else: 
@@ -772,18 +780,6 @@ def plot_data(train, val, xlabel = None, ylabel = None, mark_best = None, palett
     plt.axvline(x = mark_best, color = palette["grey"])
 
 def save_evaluation(expected, predicted, classes, cfg, label_order = None, normalize = "true", file_name = "confusion_matrix.png", pad = None, class_weight = None):
-  file = open(os.path.join(cfg.OUTPUT.LOCATION, "metrics.txt"), "w")
-
-  try:
-    file.write(classification_report(expected, predicted, zero_division = 0, labels = classes, target_names = label_order)) 
-    file.write("\n\n")     
-    file.write("Categorical accuracy: {:.2f}\n".format(accuracy_score(expected, predicted)))
-    file.write("Weighted accuracy: {:.2f}\n".format(weighted_accuracy(expected, predicted, class_weight)))    
-    file.write("Balanced accuracy: {:.2f}\n".format(my_balanced_accuracy_score(expected, predicted)))
-  finally:
-    file.close() 
-
-  #========================================================================================================================#
   cm = confusion_matrix(expected, predicted, normalize = None, labels = classes)
 
   df = pd.DataFrame(cm, columns = label_order, index = label_order)
@@ -814,6 +810,23 @@ def save_evaluation(expected, predicted, classes, cfg, label_order = None, norma
     plt.close()
     sb.reset_orig()
 
+  #========================================================================================================================#
+  file = open(os.path.join(cfg.OUTPUT.LOCATION, "metrics.txt"), "w")
+
+  try:
+    file.write(classification_report(expected, predicted, zero_division = 0, labels = classes, target_names = label_order)) 
+    file.write("\n\n")     
+    file.write("Categorical accuracy: {:.2f}\n".format(accuracy_score(expected, predicted)))
+    file.write("Weighted accuracy: {:.2f}\n".format(weighted_accuracy(expected, predicted, class_weight)))    
+
+    file.write("\n\n")
+    file.write("Diagonal of the normalized confusion matrix:\n")
+
+    for label, value in zip(label_order, np.diagonal(cm)):
+      file.write("{:10s} {:.2f}\n".format(label, value))
+  finally:
+    file.close() 
+
 def save_video_evaluation(video_id, window_last_frame, expected, probs, cfg, nr_classes):
   output_location = os.path.join(cfg.OUTPUT.LOCATION, "video_evaluation")
 
@@ -822,6 +835,8 @@ def save_video_evaluation(video_id, window_last_frame, expected, probs, cfg, nr_
 
   expected = np.array(expected)
   predicted = np.argmax(probs, axis = 1) 
+
+#========================================================================================================================================#
 
   accuracy  = accuracy_score(expected, predicted)
   acc_desc  = "acc"

@@ -96,7 +96,7 @@ Check the configuration files under `config` folder.
       You also have to change the config `TRAIN.USE_CROSS_VALIDATION`.
 
 ```
-bash scripts/omnimix.sh /path/to/the/frames/squash/files /path/to/the/sound/squash/files config/M2.yaml
+bash scripts/omnimix.sh M2 config/M2.yaml
 ```
 > [!IMPORTANT] 
 > this code uses the squash files previously created.
