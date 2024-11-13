@@ -780,18 +780,6 @@ def plot_data(train, val, xlabel = None, ylabel = None, mark_best = None, palett
     plt.axvline(x = mark_best, color = palette["grey"])
 
 def save_evaluation(expected, predicted, classes, cfg, label_order = None, normalize = "true", file_name = "confusion_matrix.png", pad = None, class_weight = None):
-  file = open(os.path.join(cfg.OUTPUT.LOCATION, "metrics.txt"), "w")
-
-  try:
-    file.write(classification_report(expected, predicted, zero_division = 0, labels = classes, target_names = label_order)) 
-    file.write("\n\n")     
-    file.write("Categorical accuracy: {:.2f}\n".format(accuracy_score(expected, predicted)))
-    file.write("Weighted accuracy: {:.2f}\n".format(weighted_accuracy(expected, predicted, class_weight)))    
-    file.write("Balanced accuracy: {:.2f}\n".format(my_balanced_accuracy_score(expected, predicted)))
-  finally:
-    file.close() 
-
-  #========================================================================================================================#
   cm = confusion_matrix(expected, predicted, normalize = None, labels = classes)
 
   df = pd.DataFrame(cm, columns = label_order, index = label_order)
@@ -821,6 +809,23 @@ def save_evaluation(expected, predicted, classes, cfg, label_order = None, norma
   finally:
     plt.close()
     sb.reset_orig()
+
+  #========================================================================================================================#
+  file = open(os.path.join(cfg.OUTPUT.LOCATION, "metrics.txt"), "w")
+
+  try:
+    file.write(classification_report(expected, predicted, zero_division = 0, labels = classes, target_names = label_order)) 
+    file.write("\n\n")     
+    file.write("Categorical accuracy: {:.2f}\n".format(accuracy_score(expected, predicted)))
+    file.write("Weighted accuracy: {:.2f}\n".format(weighted_accuracy(expected, predicted, class_weight)))    
+
+    file.write("\n\n")
+    file.write("Diagonal of the normalized confusion matrix:\n")
+
+    for label, value in zip(label_order, np.diagonal(cm)):
+      file.write("{:10s} {:.2f}\n".format(label, value))
+  finally:
+    file.close() 
 
 def save_video_evaluation(video_id, window_last_frame, expected, probs, cfg, nr_classes):
   output_location = os.path.join(cfg.OUTPUT.LOCATION, "video_evaluation")
