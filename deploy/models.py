@@ -74,7 +74,10 @@ class AllInOneModel:
                     model.reset()
                     print("Success")
                     break
-                except KeyError:
+                except KeyError as e:
+                    print("Error building model", e)
+                    import traceback
+                    traceback.print_exc()
                     pass
             else:
                 print("Disabling model", skill, self.model_type)
@@ -125,7 +128,7 @@ class AllInOneModel:
         sm_ims_rgb = [ self.model.prepare(im) for im in ims_rgb]
         for im in sm_ims_rgb:
             self.model.queue_frame(im)
-            self.count += 1
+            #self.count += 1
             
 
     @torch.no_grad()
@@ -137,9 +140,9 @@ class AllInOneModel:
         sm_ims_rgb = [ self.model.prepare(im) for im in ims_rgb]
         for im in sm_ims_rgb:
             self.model.queue_frame(im)
-            self.count += 1
+            #self.count += 1
         preds = self.model(sm_ims_rgb[-1], queue_frame=False)
-        print(f"\n{self.count}\n")
+        #print(f"\n{self.count}\n")
         
         try:
             self.sm.process_timestep(preds.cpu().squeeze().numpy())
