@@ -93,16 +93,16 @@ class AllInOneModel:
         self.sm = ProcedureStateMachine(self.model.cfg.MODEL.OUTPUT_DIM)
         print(555, skill, self.model.cfg.MODEL.OUTPUT_DIM, len(self.model.STEPS), self.model.STEPS, self.sm.current_state.shape)
 
-        if self.sink is not None:
-            self.sink.__exit__(None, None, None)
-        print("Opening", f"/home/ptg/Desktop/TEST_VIDEO_{time.time()}.mp4")
-        #1290, 1920
-        #432, 768
-        self.sink = sv.VideoSink(f"/home/ptg/Desktop/TEST_VIDEO_{time.time()}.mp4", video_info=sv.VideoInfo(width=768, height=432, fps=15, total_frames=527))
-        self.sink.__enter__()
-        self.count = 0
-    sink = None
-    last_pred = None
+        # if self.sink is not None:
+        #     self.sink.__exit__(None, None, None)
+        # print("Opening", f"/home/ptg/Desktop/TEST_VIDEO_{time.time()}.mp4")
+        # #1290, 1920
+        # #432, 768
+        # self.sink = sv.VideoSink(f"/home/ptg/Desktop/TEST_VIDEO_{time.time()}.mp4", video_info=sv.VideoInfo(width=768, height=432, fps=15, total_frames=527))
+        # self.sink.__enter__()
+        # self.count = 0
+    #sink = None
+    #last_pred = None
 
     def get_steps(self):
         if self.model is None:
@@ -114,12 +114,12 @@ class AllInOneModel:
         if self.model is None:
             return 
 
-        # save frames to file
-        for im in ims_rgb:
-            im = cv2.cvtColor(np.asarray(im).copy(), cv2.COLOR_RGB2BGR)
-            if self.last_pred is not None:
-                im = cv2.putText(im, self.last_pred, (10, 25), cv2.FONT_HERSHEY_COMPLEX, 0.6, (0, 219, 219), 1)
-            self.sink.write_frame(im)
+        # # save frames to file
+        # for im in ims_rgb:
+        #     im = cv2.cvtColor(np.asarray(im).copy(), cv2.COLOR_RGB2BGR)
+        #     if self.last_pred is not None:
+        #         im = cv2.putText(im, self.last_pred, (10, 25), cv2.FONT_HERSHEY_COMPLEX, 0.6, (0, 219, 219), 1)
+        #     self.sink.write_frame(im)
 
         # queue frames
         sm_ims_rgb = [ self.model.prepare(im) for im in ims_rgb]
@@ -166,13 +166,13 @@ class AllInOneModel:
         #np.savetxt(os.path.join( path, "preds.txt" ), preds.cpu().squeeze().numpy())
         #np.savetxt(os.path.join( path, "state.txt" ), state)
 
-        self.last_pred = " ".join(f"{x:.0%}" for x in preds.cpu().squeeze().numpy())
+        # self.last_pred = " ".join(f"{x:.0%}" for x in preds.cpu().squeeze().numpy())
 
-        # save frames to file
-        for im in ims_rgb:
-            im = cv2.cvtColor(np.asarray(im).copy(), cv2.COLOR_RGB2BGR)
-            im = cv2.putText(im, self.last_pred, (10, 25), cv2.FONT_HERSHEY_COMPLEX, 0.6, (219, 0, 0), 1)
-            self.sink.write_frame(im)
+        # # save frames to file
+        # for im in ims_rgb:
+        #     im = cv2.cvtColor(np.asarray(im).copy(), cv2.COLOR_RGB2BGR)
+        #     im = cv2.putText(im, self.last_pred, (10, 25), cv2.FONT_HERSHEY_COMPLEX, 0.6, (219, 0, 0), 1)
+        #     self.sink.write_frame(im)
 
         objects = None
         return preds, objects, state
