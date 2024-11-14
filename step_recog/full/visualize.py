@@ -22,9 +22,10 @@ def main(video_path, output_path='output.mp4', cfg_file=""):
     '''
     # create video reader and video writer
     video_info = sv.VideoInfo.from_video_path(video_path)
+    print(video_info)
 
     # define model
-    model = build_model(cfg_file, video_info.fps)
+    model = build_model(cfg_file, fps=video_info.fps)
     psm   = ProcedureStateMachine(model.cfg.MODEL.OUTPUT_DIM)
 
     step_process = video_info.fps #1 second by default
@@ -34,7 +35,8 @@ def main(video_path, output_path='output.mp4', cfg_file=""):
 
     with sv.VideoSink(output_path, video_info=video_info) as sink:
         # iterate over video frames
-        for idx, frame in tqdm.tqdm(enumerate(sv.get_video_frames_generator(video_path))):
+        pbar = tqdm.tqdm(enumerate(sv.get_video_frames_generator(video_path)))
+        for idx, frame in pbar:
             frame_aux = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             frame_aux = model.prepare(frame_aux)
             model.queue_frame(frame_aux)  
@@ -46,6 +48,7 @@ def main(video_path, output_path='output.mp4', cfg_file=""):
               step_desc = "No step" if step_idx >= len(model.STEPS) else model.STEPS[step_idx]              
               
             psm.process_timestep(prob_step)
+            pbar.set_description(" ".join(f"{x:.0%}" for x in prob_step) + " | " + " ".join(f'{x}' for x in psm.current_state))
 
             # draw the prediction (could be your bar chart) on the frame
             plot_graph(frame, prob_step, step_desc, psm.current_state)

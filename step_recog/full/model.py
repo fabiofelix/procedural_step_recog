@@ -54,7 +54,9 @@ def build_model(cfg_file=None, fps=10, skill=None, variant=0, checkpoint_path=No
       cfg_name = cfg_file.split(os.sep).rsplit('.',1)[0]
       cfg.MODEL.OMNIGRU_CHECKPOINT_URL = f'/home/user/models/{cfg_name}.pt'
 
-  return  MODEL_CLASS(cfg, fps).to("cuda")  
+  model = MODEL_CLASS(cfg, fps).to("cuda")
+  model.eval() 
+  return model
 
 
 @functools.lru_cache(1)
@@ -87,9 +89,11 @@ class StepPredictor(nn.Module):
 
     def create_queue(self, maxlen):
       self.input_queue = deque(maxlen=maxlen)
+      self.input_queue_aux = deque(maxlen=maxlen)
     
     def reset(self):
       self.input_queue.clear()
+      self.input_queue_aux.clear()
 
     def queue_frame(self, image):
       if len(self.input_queue) == 0:
@@ -165,6 +169,11 @@ class StepPredictor_GRU(StepPredictor):
     def queue_frame(self, image):
       X_omnivore = image
 
+      if len(self.input_queue_aux) == 0:
+        self.input_queue_aux.extend([image] * self.input_queue_aux.maxlen) #padding
+      else:
+        self.input_queue_aux.append(image)
+
       if self.cfg.MODEL.USE_ACTION:
         X_omnivore = self.omnivore.prepare_image(image)
 
@@ -214,6 +223,7 @@ class StepPredictor_GRU(StepPredictor):
         # mix it all together
         if self.h is None:
           self.h = self.head.init_hidden(Z_action.shape[0])
+          #self.h[:] = 0
         
         device = self._device.device
         prob_step, self.h = self.head(

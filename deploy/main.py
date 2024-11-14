@@ -62,8 +62,8 @@ class Perception:
         # stream ids
         with logging_redirect_tqdm():
             async with ag.Graph() as g:
-                q_rgb, = g.add_producer(self.reader, g.add_queue(ag.SlidingQueue))
-                q_proc = g.add_consumer(self.processor, q_rgb, g.add_queue(ag.SlidingQueue))
+                q_rgb, = g.add_producer(self.reader, g.add_queue(ag.Queue))
+                q_proc = g.add_consumer(self.processor, q_rgb, g.add_queue(ag.Queue))
                 g.add_consumer(self.writer, q_proc)
             print("finished")
 
@@ -74,7 +74,7 @@ class Perception:
         vocab_sid = f'{prefix or ""}event:recipes'
 
         t0 = time.time()
-        async with self.api.data_pull_connect([in_sid, recipe_sid, vocab_sid], ack=True) as ws_pull:
+        async with self.api.data_pull_connect([in_sid, recipe_sid, vocab_sid], ack=True, latest=False) as ws_pull:
             recipe_id = self.api.session.current_recipe()
             if recipe_id is not None:
                 print('recipe id', recipe_id)
@@ -109,15 +109,11 @@ class Perception:
         pbar = tqdm.tqdm()
         while True:
             pbar.set_description('processor waiting for data...')
-            sid, t, d = await queue.get()
+            sid, t, img = await queue.get()
             try:
                 pbar.set_description(f'processor got {sid} {t}')
                 pbar.update()
-                xs = queue.read_buffer()
-                imgs = [x for _, _, x in xs]
-
-                # predict actions
-                preds = await self.session.on_image(imgs)
+                preds = await self.session.on_image([img])
                 if preds is not None:
                         out_queue.push([preds, t])
             except Exception as e:
@@ -186,11 +182,12 @@ class MultiStepsSession:
         for d in ds:
             data.update(d or {})
         return data
-
+ag.Queue.push = ag.Queue.put_nowait
 
 
 class StepsSession:
-    MAX_RATE_SECS = 0.3
+    #MAX_RATE_SECS = 0.5 #0.3
+    MAX_RATE_SECS = 1.0
     def __init__(self, prefix=None, model=model):
         # models
         self.model = model
@@ -224,19 +221,19 @@ class StepsSession:
         self.id_vocab_list = id_vocab.astype(str).tolist()
 
         self.t0 = None
+        self.local_buffer = []
 
     async def on_image(self, imgs: List[np.ndarray]):
+        self.local_buffer.extend(imgs)
+
+        t = time.time()
         if self.t0 is None:
-            self.t0 = time.time()
-        if self.MAX_RATE_SECS > (time.time() - self.t0):
-            self.model.queue_frames.remote(imgs)
-            objects = await self.model.forward_boxes.remote(imgs[-1])
-            if not objects:
-                return
-            return { self.box_sid: objects }
+            self.t0 = 0
+        if self.MAX_RATE_SECS > (t - self.t0) + 0.03:
+            return {}
+        self.t0 = t
 
-        self.t0 = time.time()
-
+        imgs, self.local_buffer = self.local_buffer, []
         steps, objects, state = await self.model.forward.remote(imgs)
         if steps is None:
             return {}
@@ -252,7 +249,6 @@ class StepsSession:
                 "error_description": "",
             },
             self.steps_raw_sid: state.tolist(),
-
         }
 
     def get_steps(self, state, confidence):
