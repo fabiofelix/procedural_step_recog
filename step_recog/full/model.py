@@ -53,7 +53,10 @@ def build_model(cfg_file=None, fps=10, skill=None, variant=0, checkpoint_path=No
       cfg_name = cfg_file.split(os.sep).rsplit('.',1)[0]
       cfg.MODEL.OMNIGRU_CHECKPOINT_URL = f'/home/user/models/{cfg_name}.pt'
 
-  return  MODEL_CLASS(cfg, fps).to("cuda")  
+  model = MODEL_CLASS(cfg, fps).to("cuda")
+  model.eval() 
+  return model
+
 
 @functools.lru_cache(1)
 def get_omnivore(cfg_fname):
