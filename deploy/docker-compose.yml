@@ -1,0 +1,40 @@
+
+version: '3.7'
+
+# needed if you want to connect to the ptg server running on this machine
+networks:
+  default:
+    name: ptg
+    external: true
+
+services:
+  perception:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: bbn-perception:latest
+    container_name: perception
+    restart: unless-stopped
+    volumes:
+      - /dev/shm:/dev/shm
+      - ${VOLUMES:-./data}/models:/home/user/models
+      - ${VOLUMES:-./data}/models/cache:/root/.cache
+      - ${VOLUMES:-./data}/models/torch_iocache:/root/.torch/iopath_cache
+      - ../config:/home/user/data/config
+    environment:
+      PYTHONUNBUFFERED: "1"
+      PTG_URL: http://api:8000  # using the docker network
+      #PTG_URL: http://127.0.0.1:7890  # using the machine localhost
+      #PTG_URL: http://172.34.113.199  # using the machine IP
+    devices:
+     - /dev/nvidia0:/dev/nvidia0
+     - /dev/nvidia1:/dev/nvidia1
+    runtime: nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              #capabilities: [gpu]
+              capabilities: [gpu, compute, utility]
+              count: 1  # could be 2

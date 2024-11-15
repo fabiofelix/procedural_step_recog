@@ -1,0 +1,4 @@
+_BASE_: M5.yaml
+MODEL:
+  CLASS: OmniTransformer_v3
+  OMNIGRU_CHECKPOINT_URL: /home/user/models/M5_swin.pt
