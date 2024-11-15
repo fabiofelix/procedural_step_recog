@@ -24,8 +24,8 @@ def main(video_path, output_path='output.mp4', cfg_file=""):
     video_info = sv.VideoInfo.from_video_path(video_path)
 
     # define model
-    model = build_model(cfg_file, video_info.fps)
-    psm   = ProcedureStateMachine(model.cfg.MODEL.OUTPUT_DIM)
+    model = build_model(cfg_file, fps=video_info.fps)
+    psm   = ProcedureStateMachine(model.cfg.MODEL.OUTPUT_DIM + 1)
 
     step_process = video_info.fps #1 second by default
     prob_step = np.zeros(model.cfg.MODEL.OUTPUT_DIM + 1)
@@ -34,7 +34,8 @@ def main(video_path, output_path='output.mp4', cfg_file=""):
 
     with sv.VideoSink(output_path, video_info=video_info) as sink:
         # iterate over video frames
-        for idx, frame in tqdm.tqdm(enumerate(sv.get_video_frames_generator(video_path))):
+        pbar = tqdm.tqdm(enumerate(sv.get_video_frames_generator(video_path)))
+        for idx, frame in pbar:
             frame_aux = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             frame_aux = model.prepare(frame_aux)
             model.queue_frame(frame_aux)  
@@ -42,13 +43,14 @@ def main(video_path, output_path='output.mp4', cfg_file=""):
             if idx % step_process == 0:
               # take in a queue frame and make the next prediction
               prob_step = model(frame_aux, queue_frame = False).cpu().squeeze().numpy()
+              psm.process_timestep(prob_step)
               step_idx  = np.argmax(prob_step)
-              step_desc = "No step" if step_idx >= len(model.STEPS) else model.STEPS[step_idx]              
-              
-            psm.process_timestep(prob_step)
+              step_desc = "No step" if step_idx >= len(model.STEPS) else model.STEPS[step_idx]   
+
+            pbar.set_description(" ".join(f"{x:.0%}" for x in prob_step) + " | " + " ".join(f'{x}' for x in psm.current_state))            
 
             # draw the prediction (could be your bar chart) on the frame
-            plot_graph(frame, prob_step, step_desc, psm.current_state)
+            plot_graph(frame, prob_step, step_desc, psm.current_state[:-1])
             sink.write_frame(frame)
 
 ##TODO: Review the offsets
