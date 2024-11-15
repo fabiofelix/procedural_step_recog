@@ -93,7 +93,7 @@ class AllInOneModel:
         self.model = self.get_model(skill)
         if self.model is None:
             return
-        self.sm = ProcedureStateMachine(self.model.cfg.MODEL.OUTPUT_DIM)
+        self.sm = ProcedureStateMachine(self.model.cfg.MODEL.OUTPUT_DIM + 1)
         print(555, skill, self.model.cfg.MODEL.OUTPUT_DIM, len(self.model.STEPS), self.model.STEPS, self.sm.current_state.shape)
 
         # if self.sink is not None:
@@ -148,7 +148,7 @@ class AllInOneModel:
             self.sm.process_timestep(preds.cpu().squeeze().numpy())
         except Exception as e:
             print("\n\n\nerror state update", preds, self.sm.current_state, type(e).__name__, e)
-        state = self.sm.current_state
+        state = self.sm.current_state[:-1]
 
         #folder = str(time.time())
         #path = os.path.join("/home/ptg/Desktop/FRAME_TEST", folder)
