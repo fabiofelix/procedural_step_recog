@@ -46,8 +46,7 @@ def main(video_path, output_path='output.mp4', cfg_file=""):
               psm.process_timestep(prob_step)
               step_idx  = np.argmax(prob_step)
               step_desc = "No step" if step_idx >= len(model.STEPS) else model.STEPS[step_idx]   
-
-            pbar.set_description(" ".join(f"{x:.0%}" for x in prob_step) + " | " + " ".join(f'{x}' for x in psm.current_state))            
+              pbar.set_description(" ".join(f"{x:.0%}" for x in prob_step) + " | " + " ".join(f'{x}' for x in psm.current_state))            
 
             # draw the prediction (could be your bar chart) on the frame
             plot_graph(frame, prob_step, step_desc, psm.current_state[:-1])
