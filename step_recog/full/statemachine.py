@@ -57,6 +57,8 @@ class ProcedureStateMachine:
         for pb in probs[1:]:
           move_avg[step] = self.ema_alpha * pb + (1 - self.ema_alpha) * move_avg[step]
 
+    #forces sum(move_avg) = 1.0
+    move_avg    = move_avg / np.sum(move_avg)
     max_prob    = np.max(move_avg)
     max_indices = np.where(move_avg == max_prob)[0]
 
