@@ -112,7 +112,7 @@ class OmniGRU(torch.nn.Module):
             x.append(obj_in)
 
         x = torch.concat(x, -1) if len(x) > 1 else x[0]            
-        out, h = self.gru(x, h)
+        out, h = self.gru(x, self.init_hidden(x.shape[0]) if h is None else h)
         out = self.relu(out[:, -1]) if return_last_step else self.relu(out)
         out = self.fc(out)
         return out, h

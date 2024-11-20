@@ -12,6 +12,11 @@ DATASET:
 OUTPUT:
   LOCATION: "/home/user/output"    
 
+TRAIN:
+  OPT: "adamw"  #adam adamw sgd rmsprop
+  LR: 0.001
+  WEIGHT_DECAY: 0.01
+
 SKILLS:
   - NAME: R18 - Apply chest seal
     STEPS:

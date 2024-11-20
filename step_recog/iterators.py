@@ -71,7 +71,6 @@ def build_optimizer(model, cfg):
 def train_step_GRU(model, criterion, criterion_t, optimizer, loader, is_training, device, cfg, progress, class_weight):
   if is_training:
     model.train()
-    h = model.init_hidden(cfg.TRAIN.BATCH_SIZE)
   else:
     model.eval()  
 
@@ -94,13 +93,9 @@ def train_step_GRU(model, criterion, criterion_t, optimizer, loader, is_training
     action, obj, frame, audio, label, label_t, mask, _, _ = next(loader_iterator)
     label = nn.functional.one_hot(label, model.number_classes)
 
-    if not is_training:
-      h = model.init_hidden(len(label))
-
-    h = torch.zeros_like(h)
     optimizer.zero_grad()
 
-    out, h = model(action.to(device).float(), h, audio.to(device).float(), obj.to(device).float(), frame.to(device).float(), return_last_step = False)
+    out, _ = model(action=action.to(device).float(), aud=audio.to(device).float(), objs=obj.to(device).float(), frame=frame.to(device).float(), return_last_step = False)
 
     mask    = mask.to(out.device)  
     label   = label.to(out.device)
@@ -468,9 +463,7 @@ def evaluate_GRU(model, data_loader, cfg):
 #  ipdb.set_trace()
 
   for action, obj, frame, audio, label, _, mask, frame_idx, videos in data_loader:
-    h = model.init_hidden(len(action))
-
-    out, _ = model(action.to(device).float(), h, audio.to(device).float(), obj.to(device).float(), frame.to(device).float(), return_last_step = False)
+    out, _ = model(action=action.to(device).float(), aud=audio.to(device).float(), objs=obj.to(device).float(), frame=frame.to(device).float(), return_last_step = False)
     out    = torch.softmax(out[..., :model.number_classes], dim = -1).cpu().detach().numpy()
     label  = label.cpu().numpy()
     frame_idx = frame_idx.cpu().numpy()

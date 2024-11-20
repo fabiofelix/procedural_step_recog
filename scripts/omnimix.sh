@@ -41,7 +41,7 @@ sbatch <<EOSBATCH
 #SBATCH --mem 64GB
 #SBATCH --time 2-00:00:00
 #SBATCH --gres gpu:1
-#SBATCH --job-name step-recog-k$KFOLD_ITER$DESC
+#SBATCH --job-name step-k$KFOLD_ITER$DESC
 #SBATCH --output logs/%J_step-k$KFOLD_ITER$DESC.out
 #SBATCH --mail-type=BEGIN,END,ERROR
 #SBATCH --mail-user=$USER@nyu.edu
@@ -70,8 +70,8 @@ sbatch <<EOSBATCH
 #SBATCH --mem 64GB
 #SBATCH --time 2-00:00:00
 #SBATCH --gres gpu:1
-#SBATCH --job-name step$DESC
-#SBATCH --output logs/%J_step-recog$DESC.out
+#SBATCH --job-name step-$DESC
+#SBATCH --output logs/%J_step-$DESC.out
 #SBATCH --mail-type=BEGIN,END,ERROR
 #SBATCH --mail-user=$USER@nyu.edu
 #SBATCH --account=$PROJECT_ACCOUNT
