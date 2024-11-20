@@ -3,3 +3,13 @@ MODEL:
   CLASS: OmniTransformer_v3
   OMNIGRU_CHECKPOINT_URL: /home/user/models/R19_swin.pt
 
+DATASET:
+  CLASS: 'Milly_multifeature_v6'  
+
+TRAIN:
+  OPT: "adamw"  #adam adamw sgd rmsprop
+  LR: 0.0001
+  LINEAR_WARMUP_EPOCHS: 3 #default None
+  WEIGHT_DECAY: 0.05
+  SCHEDULER: 'cos'
+  EPOCHS: 30

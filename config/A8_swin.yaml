@@ -2,3 +2,14 @@ _BASE_: A8.yaml
 MODEL:
   CLASS: OmniTransformer_v4
   OMNIGRU_CHECKPOINT_URL: /home/user/models/A8_swin.pt
+
+DATASET:
+  CLASS: 'Milly_multifeature_v6'  
+
+TRAIN:
+  OPT: "adamw"  #adam adamw sgd rmsprop
+  LR: 0.0001
+  LINEAR_WARMUP_EPOCHS: 3 #default None
+  WEIGHT_DECAY: 0.05
+  SCHEDULER: 'cos'
+  EPOCHS: 30
