@@ -209,58 +209,93 @@ class OmniTransformer_v4(PTGPerceptionBases):
     X = torch.flatten(X, 1)
     
     return self.image_branch.head(X)      
+
+class CrossType(IntEnum):
+  ALL_ATTN   = 0       
+  FIRST_ATTN = 1
   
 ##Send text features to Cross-Attention  
 class OmniTransformer_v5(PTGPerceptionBases):
   def __init__(self, cfg, load = False, *args, **kwargs):
     super().__init__(*args, **kwargs)
-#    ipdb.set_trace()
 
+    self.cross_type = CrossType.ALL_ATTN
     self.number_classes = cfg.MODEL.OUTPUT_DIM + 1 #adding no step
-    self.image_branch = torchvision.models.video.swin3d_t(weights = Swin3D_T_Weights.KINETICS400_V1, block = partial(SwinTransformerBlock_CrossAttention, attn_layer=ShiftedWindowAttention3d_CrossAttention))  #params = 28,158,070
-    
+
+    if self.cross_type == CrossType.ALL_ATTN:
+      self.image_branch = torchvision.models.video.swin3d_t(weights = Swin3D_T_Weights.KINETICS400_V1, block = SwinTransformerBlock_CrossAttention)  #params = 28,158,070
+    elif self.cross_type == CrossType.FIRST_ATTN:
+      self.image_branch = torchvision.models.video.swin3d_t(weights = Swin3D_T_Weights.KINETICS400_V1)  #params = 28,158,070      
+
     self.__prepare_branches()
-    self.proj_Z = []
-
-    for feat in self.image_branch.features:
-      if isinstance(feat, torch.nn.Sequential):
-        clip_proj = torch.nn.Linear(512, feat[0].attn.kv.in_features) #project CLIP space
-        self._init_layer(clip_proj)
-        self.proj_Z.append(clip_proj)
-      else:
-        self.proj_Z.append(None)  
-
-    self.proj_Z = nn.Sequential(*self.proj_Z)
-    self.proj_gelu = torch.nn.GELU()
+    self.__prepare_q_layers()
 
     if load:
-      self.load_state_dict( self.update_version(torch.load( cfg.MODEL.OMNIGRU_CHECKPOINT_URL )))    
-
+      self.load_state_dict( self.update_version(torch.load( cfg.MODEL.OMNIGRU_CHECKPOINT_URL )))
 
   def __prepare_branches(self):
     ##Configure IMAGE features
-    ##Even when passing block = partial(..., attn_layer= ...), block doesn't use the correct class to create attn
-    for feat in self.image_branch.features:
-      if isinstance(feat, torch.nn.Sequential):
-        for block in feat:
-          block.add_norm()
-          new_attn = ShiftedWindowAttention3d_CrossAttention(
-                          block.attn.qkv.in_features, 
-                          block.attn.window_size, 
-                          block.attn.shift_size, 
-                          block.attn.num_heads, 
-                          attention_dropout=block.attn.attention_dropout, 
-                          dropout=block.attn.attention_dropout 
-                      )
-          new_attn.copy_self2cross(block.attn.qkv)
-          block.attn = new_attn
+#    ipdb.set_trace()
+    ##Replaces ALL block self-attention with cross-attention
+    if self.cross_type == CrossType.ALL_ATTN:
+      for stage in self.image_branch.features:
+        if isinstance(stage, torch.nn.Sequential):
+          for block in stage:
+            block.add_norm()
+            new_attn = ShiftedWindowAttention3d_CrossAttention(
+                            block.attn.qkv.in_features, 
+                            block.attn.window_size, 
+                            block.attn.shift_size, 
+                            block.attn.num_heads, 
+                            attention_dropout=block.attn.attention_dropout, 
+                            dropout=block.attn.dropout 
+                        )
+            new_attn.copy_self2cross(block.attn)
+            block.attn = new_attn
+    ##Replaces only the FRIST block self-attention with cross-attention            
+    elif self.cross_type == CrossType.FIRST_ATTN: 
+      for idx, stage in enumerate(self.image_branch.features):
+        if isinstance(stage, torch.nn.Sequential):
+          new_block = SwinTransformerBlock_CrossAttention(
+            dim=stage[0].attn.qkv.in_features, 
+            num_heads=stage[0].attn.num_heads, 
+            window_size=stage[0].attn.window_size, 
+            shift_size=stage[0].attn.shift_size, 
+            dropout=stage[0].attn.dropout, 
+            attention_dropout=stage[0].attn.attention_dropout, 
+            stochastic_depth_prob=stage[0].stochastic_depth.p, 
+            norm_layer=type(stage[0].norm1), 
+            attn_layer=ShiftedWindowAttention3d_CrossAttention
+          )
+          new_block.add_norm()
+          new_block.attn.copy_self2cross(stage[0].attn)
+          self.image_branch.features[idx][0] = new_block                 
 
     ##Configure IMAGE head
     self.image_branch.head = nn.Linear(in_features=self.image_branch.head.in_features, out_features=self.number_classes, bias=self.image_branch.head.bias is not None)    
     self._init_layer(self.image_branch.head)
 
-  def forward(self, img, text):
-    ##Equal to SwinTransformer3d.forward()
+  def __prepare_q_layers(self):
+    self.proj_Z = []
+    clip_embedding = 512
+
+    for stage in self.image_branch.features:
+      if isinstance(stage, torch.nn.Sequential):
+        clip_proj = nn.Sequential(
+              nn.LayerNorm(clip_embedding, eps=self.image_branch.patch_embed.norm.eps),
+              nn.Linear(clip_embedding, stage[0].attn.kv.in_features),
+              nn.GELU(),
+              nn.Dropout(self.image_branch.pos_drop.p)
+            )
+        for layer in clip_proj:
+          self._init_layer(layer)
+        self.proj_Z.append(clip_proj)
+      else:
+        self.proj_Z.append(None)         
+
+    self.proj_Z = nn.Sequential(*self.proj_Z)        
+
+  def forward(self, img, text = None):
     X = self.image_branch.patch_embed(img)  # B _T _H _W _C
     X = self.image_branch.pos_drop(X)
 
@@ -269,21 +304,31 @@ class OmniTransformer_v5(PTGPerceptionBases):
     Z = torch.nn.functional.interpolate(input = text[None, None, None, ...], size = (1, X.shape[0], text.shape[1]), mode = "nearest")
     Z = Z.permute(3, 0, 1, 2, 4)
     #2. Repate text features for each image token and project them (B, 1, 1, 1, F) => (B, _T, _H, _W, F)
-    Z_repeat = Z.repeat(1, X.shape[1], X.shape[2], X.shape[3], 1)
+    Z_repeat = Z.repeat(1, X.shape[1], X.shape[2], X.shape[3], 1)    
 
-#    ipdb.set_trace()
-    
-    for image_feat, z_proj in zip(self.image_branch.features, self.proj_Z):
-      if isinstance(image_feat, torch.nn.Sequential):
-        for image_block in image_feat:
-          Z_aux = self.proj_gelu(z_proj(Z_repeat))
-          X = image_block(X, Z_aux)
-      else: #PatchMerging
-        X = image_feat(X)
-        #2. Repate text features for each image token and project them (B, 1, 1, 1, F) => (B, _T, _H, _W, F)
-        Z_repeat = Z.repeat(1, X.shape[1], X.shape[2], X.shape[3], 1)        
-
-#    ipdb.set_trace()
+    if self.cross_type == CrossType.ALL_ATTN:
+      for image_stage, z_proj in zip(self.image_branch.features, self.proj_Z):
+        if isinstance(image_stage, torch.nn.Sequential):
+          for image_block in image_stage:
+            Z_aux = z_proj(Z_repeat)
+            X = image_block(X, Z_aux)
+        else: #PatchMerging
+          X = image_stage(X)
+          #2. Repate text features for each image token and project them (B, 1, 1, 1, F) => (B, _T, _H, _W, F)
+          Z_repeat = Z.repeat(1, X.shape[1], X.shape[2], X.shape[3], 1)  
+    elif self.cross_type == CrossType.FIRST_ATTN:           
+      for image_stage, z_proj in zip(self.image_branch.features, self.proj_Z):
+        if isinstance(image_stage, torch.nn.Sequential):
+          for image_block in image_stage:
+            if isinstance(image_block, SwinTransformerBlock_CrossAttention):
+              Z_aux = z_proj(Z_repeat)
+              X = image_block(X, Z_aux)
+            else:  
+              X = image_block(X)
+        else: #PatchMerging
+          X = image_stage(X)
+          #2. Repate text features for each image token and project them (B, 1, 1, 1, F) => (B, _T, _H, _W, F)
+          Z_repeat = Z.repeat(1, X.shape[1], X.shape[2], X.shape[3], 1)       
 
     ##Equal to SwinTransformer3d.forward()
     X = self.image_branch.norm(X)
@@ -292,4 +337,4 @@ class OmniTransformer_v5(PTGPerceptionBases):
     X = torch.flatten(X, 1)
     
     return self.image_branch.head(X)  
-  
+

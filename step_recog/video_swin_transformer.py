@@ -148,23 +148,24 @@ def shifted_window_attention_3d_crossattention(
     return x
 
 class ShiftedWindowAttention3d_CrossAttention(ShiftedWindowAttention3d):
-  def copy_self2cross(self, qkv = None):
-    qkv     = self.qkv if qkv is None else qkv
-    self.q  = nn.Linear(in_features=qkv.in_features, out_features=qkv.in_features, bias=qkv.bias is not None) 
-    self.kv = nn.Linear(in_features=qkv.in_features, out_features=qkv.in_features * 2, bias=qkv.bias is not None) 
+  def copy_self2cross(self, self_attn):
+    self.q  = nn.Linear(in_features=self_attn.qkv.in_features, out_features=self_attn.qkv.in_features, bias=self_attn.qkv.bias is not None) 
+    self.kv = nn.Linear(in_features=self_attn.qkv.in_features, out_features=self_attn.qkv.in_features * 2, bias=self_attn.qkv.bias is not None) 
 
-    qkv.weight.requires_grad = qkv.bias.requires_grad = False
+    self.q.weight = nn.parameter.Parameter(self_attn.qkv.weight[:self_attn.qkv.in_features].clone())
+    self.q.bias   = None if self.q.bias is None else nn.parameter.Parameter(self_attn.qkv.bias[:self_attn.qkv.in_features].clone())
 
-    self.q.weight = nn.parameter.Parameter(copy.deepcopy(qkv.weight[:qkv.in_features, :]))
-    self.q.bias   = None if self.q.bias is None else nn.parameter.Parameter(copy.deepcopy(qkv.bias[:qkv.in_features]))
-    self.q.weight.requires_grad = self.q.bias.requires_grad = True
-
-    self.kv.weight = nn.parameter.Parameter(copy.deepcopy(qkv.weight[qkv.in_features:, :]))
-    self.kv.bias   = None if self.kv.bias is None else nn.parameter.Parameter(copy.deepcopy(qkv.bias[qkv.in_features:]))
-    self.kv.weight.requires_grad = self.qkv.bias.requires_grad = True
+    self.kv.weight = nn.parameter.Parameter(self_attn.qkv.weight[self_attn.qkv.in_features:].clone())
+    self.kv.bias   = None if self.kv.bias is None else nn.parameter.Parameter(self_attn.qkv.bias[self_attn.qkv.in_features:].clone())
 
     del self.qkv
-      
+
+    self.proj = nn.Linear(self_attn.proj.in_features, self_attn.proj.in_features, bias=self_attn.proj.bias is not None)
+    self.proj.load_state_dict(self_attn.proj.state_dict())
+
+    self.relative_position_bias_table = nn.parameter.Parameter(self_attn.relative_position_bias_table.clone())
+    self.relative_position_index = self_attn.relative_position_index.clone()
+
   #x: V, K - y: Q  
   def forward(self, x: Tensor, y: Tensor) -> Tensor:
     _, t, h, w, _ = x.shape
@@ -179,7 +180,7 @@ class ShiftedWindowAttention3d_CrossAttention(ShiftedWindowAttention3d):
         x,
         y,
         self.kv.weight,  
-        self.q.weight,          
+        self.q.weight,  
         self.proj.weight,
         relative_position_bias,
         window_size,
@@ -187,8 +188,8 @@ class ShiftedWindowAttention3d_CrossAttention(ShiftedWindowAttention3d):
         shift_size=shift_size,
         attention_dropout=self.attention_dropout,
         dropout=self.dropout,
-        kv_bias=self.kv.bias,        
+        kv_bias=self.kv.bias,
         q_bias=self.q.bias,
         proj_bias=self.proj.bias,
         training=self.training,
-    )        
+    ) 
