@@ -91,7 +91,7 @@ def my_train_test_split(cfg, videos):
     print("|- Spliting the dataset 90:10 for training/validation and testing")
 
     if "M1" in cfg.SKILLS[0]["NAME"]:    
-      videos, video_test = train_test_split(videos, test_size=0.10, random_state=2343) #M1      
+      videos, video_test = train_test_split(videos, test_size=0.10, random_state=2259) #M1
     elif "M2" in cfg.SKILLS[0]["NAME"]:
       videos, video_test = train_test_split(videos, test_size=0.10, random_state=2308) #M2  2156: only data until 07/09/2024;  1007: only data until june demo  2252: only with BBN 3_tourns_122023.zip 
     elif "M3" in cfg.SKILLS[0]["NAME"]:
