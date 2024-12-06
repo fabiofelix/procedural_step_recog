@@ -1,0 +1,154 @@
+#version: '3.7'
+
+networks:
+  default:
+    name: ptg
+
+services:
+
+  # api
+
+  api:
+    image: ghcr.io/vida-nyu/ptg-api-server:main
+    container_name: api
+    ports:
+     - 7890:8000
+    volumes:
+      - ${VOLUMES:-./data}/recordings:/data/recordings
+    environment:
+      REDIS_URL: redis://redis:6379
+      MONGO_URL: mongodb://mongo:27017
+    depends_on:
+      - redis
+      - mongo
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.api.rule=Host(`api.${DOMAIN:-localhost}`)"
+      - "traefik.http.services.api.loadbalancer.server.port=8000"
+
+  redis:
+    image: redis
+    container_name: redis
+    restart: unless-stopped
+    ports:
+      - 6379:6379
+    volumes:
+      - ${VOLUMES:-./data}/redis-data:/data
+    environment:
+      ALLOW_EMPTY_PASSWORD: 'yes'
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
+
+  # storage
+
+  mongo:
+    image: mongo:latest
+    container_name: mongo
+    restart: unless-stopped
+    #environment:
+    #  MONGO_INITDB_ROOT_USERNAME: ${ADMIN_USER:-admin}
+    #  MONGO_INITDB_ROOT_PASSWORD: ${ADMIN_PASS:-admin}
+    volumes:
+      - ${VOLUMES:-./data}/mongo:/data/db
+      # - ./mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js
+    ports:
+      - 27017:27017
+
+  mongo-express:
+    image: mongo-express
+    container_name: mongo_express
+    restart: unless-stopped
+    ports:
+      - 8034:8081
+    environment:
+      ME_CONFIG_MONGODB_URL: mongodb://mongo:27017/
+      #ME_CONFIG_MONGODB_SERVER: mongo
+      #ME_CONFIG_MONGODB_ADMINUSERNAME: ${ADMIN_USER:-admin}
+      #ME_CONFIG_MONGODB_ADMINPASSWORD: ${ADMIN_PASS:-admin}
+      ME_CONFIG_BASICAUTH_USERNAME: ${ADMIN_USER:-admin}
+      ME_CONFIG_BASICAUTH_PASSWORD: ${ADMIN_PASS:-admin}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.mongo.rule=Host(`mongoex.${DOMAIN:-localhost}`)"
+      - "traefik.http.routers.mongo.entrypoints=web"
+      - "traefik.http.services.mongo.loadbalancer.server.port=8081"
+
+  # visualization
+
+  dash:
+    #image: ghcr.io/vida-nyu/tim-dashboard:demo-november-2023-apiurl
+    image: tim-dashboard
+    build: tim-dashboard/frontend
+    container_name: dash
+    restart: unless-stopped
+    environment:
+      API_URL: http://localhost:7890
+      WS_API_URL: ws://localhost:7890
+    ports:
+      - "8000:80"
+      - "3010:80"
+      - "8033:80"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.tim-dash.rule=Host(`online.${DOMAIN:-localhost}`)"
+      - "traefik.http.routers.tim-dash.entrypoints=web"
+      - "traefik.http.services.tim-dash.loadbalancer.server.port=80"
+
+  argus:
+    image: ghcr.io/vida-nyu/argus2:main
+    container_name: argus
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.tim-dash.rule=Host(`argus.${DOMAIN:-localhost}`)"
+      - "traefik.http.routers.tim-dash.entrypoints=web"
+      - "traefik.http.services.tim-dash.loadbalancer.server.port=80"
+
+  # recorders
+
+  raw_recorder:
+    image: ghcr.io/vida-nyu/ptg-server-ml-record:main
+    container_name: raw_recorder
+    restart: unless-stopped
+    command: python -m ptgprocess.processors.record raw run --continuous
+    volumes:
+      - ${VOLUMES:-./data}/recordings/raw:/src/app/recordings
+
+  video_recorder:
+    image: ghcr.io/vida-nyu/ptg-server-ml-record:main
+    container_name: video_recorder
+    restart: unless-stopped
+    command: python -m ptgprocess.processors.record video run --continuous
+    volumes:
+      - ${VOLUMES:-./data}/recordings/post:/src/app/recordings
+      - ${VOLUMES:-./data}/recordings/raw:/src/app/raw
+
+  audio_recorder:
+    image: ghcr.io/vida-nyu/ptg-server-ml-record:main
+    container_name: audio_recorder
+    restart: unless-stopped
+    command: python -m ptgprocess.processors.record audio run --continuous
+    volumes:
+      - ${VOLUMES:-./data}/recordings/post:/src/app/recordings
+      - ${VOLUMES:-./data}/recordings/raw:/src/app/raw
+
+  json_recorder:
+    image: ghcr.io/vida-nyu/ptg-server-ml-record:main
+    container_name: json_recorder
+    restart: unless-stopped
+    command: python -m ptgprocess.processors.record json run --continuous
+    volumes:
+      - ${VOLUMES:-./data}/recordings/post:/src/app/recordings
+      - ${VOLUMES:-./data}/recordings/raw:/src/app/raw
+
+  pointcloud_recorder:
+    image: ghcr.io/vida-nyu/ptg-server-ml-record:main
+    container_name: pointcloud_recorder
+    restart: unless-stopped
+    command: python -m ptgprocess.processors.record pointcloud run --continuous
+    volumes:
+      - ${VOLUMES:-./data}/recordings/post:/src/app/recordings
+      - ${VOLUMES:-./data}/recordings/raw:/src/app/raw
