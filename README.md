@@ -1,8 +1,9 @@
 
 # **Step recognition**
 
-This is the code for training and evaluation of the preception models built on the [PTG project](https://github.com/VIDA-NYU/ptg-server-ml) and developed by NYU.
+This is the code for training and evaluation of the perception models built on the [PTG project](https://github.com/VIDA-NYU/ptg-server-ml) and developed by NYU.
 It can process videos and predict task (skill) steps such as the ones related to [tactical field care](https://www.ncbi.nlm.nih.gov/books/NBK532260/).
+You can find a benchmark of the trained models in a preprint [paper](https://doi.org/10.48550/arXiv.2604.22036).
 
 > [!NOTE] 
 > These are the used skills:  
